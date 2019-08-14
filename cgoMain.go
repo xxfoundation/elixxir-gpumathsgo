@@ -60,7 +60,7 @@ char *unloadLibrary() {
 		powmImpl_2048 = NULL;
 		// clear dlerror
 		dlerror();
-		dlclose(dlhandle);
+		dlclose(dlHandle);
 		if ((error = dlerror()) != NULL) {
 			return error;
 		}
