@@ -1,3 +1,5 @@
 *.so
 *.out
 .idea
+*.sw*
+gpumaths

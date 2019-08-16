@@ -60,7 +60,7 @@ char *unloadLibrary() {
 		powmImpl_2048 = NULL;
 		// clear dlerror
 		dlerror();
-		dlclose(dlhandle);
+		dlclose(dlHandle);
 		if ((error = dlerror()) != NULL) {
 			return error;
 		}
@@ -82,11 +82,60 @@ import (
 	"fmt"
 	"gitlab.com/elixxir/crypto/cyclic"
 	"gitlab.com/elixxir/crypto/large"
+	"unsafe"
 )
+
+const bitLen = 2048
+
+// Load the shared library and return any errors
+func loadLibrary() error {
+	return GoError(C.loadLibrary())
+}
+
+// Unload the shared library and return any errors
+// This will prevent any calls into the library from working
+func unloadLibrary() error {
+	return GoError(C.unloadLibrary())
+}
+
+// Copies a C string into a Go error and frees the C string
+func GoError(cString *C.char) error {
+	if cString != nil {
+		errorStringGo := C.GoString(cString)
+		err := errors.New(errorStringGo)
+		C.free((unsafe.Pointer)(cString))
+		return err
+	}
+	return nil
+}
+
+// Lay out powm_2048 inputs in the correct order in a certain region of memory
+// len(x) must be equal to len(y)
+// For calculating x**y mod p
+func prepare_powm_2048_inputs(x []*cyclic.Int, y []*cyclic.Int, inputMem []byte) {
+	panic("Unimplemented")
+}
+
+// Set the prime in CUDA constant memory
+func setPrime(primeMem unsafe.Pointer) {
+	panic("Unimplemented")
+}
+
+// Calculate x**y mod p using CUDA
+// Results are put in a byte array for translation back to cyclic ints elsewhere
+func powm_2048(primeMem unsafe.Pointer, inputMem unsafe.Pointer, length uint32) ([]byte, error) {
+	powmResult := C.powm_2048(primeMem, inputMem, (C.uint)(length))
+	outputBytes := C.GoBytes(powmResult.outputs, (C.int)(bitLen / 8 * length))
+	// powmResult.outputs results in SIGABRT if freed here. Need to investigate further.
+	// Maybe the wrong amount of memory is getting freed? Or GoBytes frees automatically, assuming the memory's no longer
+	// needed?
+	err := GoError(powmResult.error)
+	C.free((unsafe.Pointer)(powmResult))
+	return outputBytes, err
+}
 
 func main() {
 	// Not sure what q would be for MODP2048, so leaving it at 1
-	const bitLen = 2048
 	g := cyclic.NewGroup(
 		large.NewIntFromString("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF", 16),
 		large.NewInt(2),
@@ -104,39 +153,18 @@ func main() {
 	cgbnInputs = append(cgbnInputs, x.CGBNMem(bitLen)...)
 	cgbnInputs = append(cgbnInputs, y.CGBNMem(bitLen)...)
 	inputsMem := C.CBytes(cgbnInputs)
-	errorString, err := C.loadLibrary()
+	err := loadLibrary()
 	if err != nil {
-		fmt.Printf("%v\n", err.Error())
-		return
+		panic(err)
 	}
-	// At some point we will also need to free the error string, right?
-	// Pain in the ass, tbh
-	if errorString != nil {
-		// TODO Try something: how does C.GoString behave when the char* is NULL?
-		//  Hopefully it would return an empty string, and not crash
-		errorStringGo := C.GoString(errorString)
-		if errorStringGo != "" {
-			fmt.Printf("%v\n", errorStringGo)
-			return
-		}
+	resultBytes, err := powm_2048(pMem, inputsMem, 1)
+	if err != nil {
+		panic(err)
 	}
-	cudaResult := C.powm_2048(pMem, inputsMem, 1)
-	if cudaResult != nil {
-		errorString := C.GoString(cudaResult.error)
-		if errorString != "" {
-			panic(errors.New(errorString))
-		}
-		resultBytes := C.GoBytes(cudaResult.outputs, bitLen/8)
-		// The results are in that byte string!
-		// So we just need to get them into a big int.
-		resultInt := g.NewIntFromCGBN(resultBytes)
-		fmt.Printf("result in Go from CUDA: %v\n", resultInt.TextVerbose(16, 0))
-	}
-	errorString = C.unloadLibrary()
-	if errorString != nil {
-		err := C.GoString(errorString)
-		if err != "" {
-			panic(errors.New(err))
-		}
+	resultInt := g.NewIntFromCGBN(resultBytes[:bitLen/8])
+	fmt.Printf("result in Go from CUDA: %v\n", resultInt.TextVerbose(16, 0))
+	err = unloadLibrary()
+	if err != nil {
+		panic(err)
 	}
 }
