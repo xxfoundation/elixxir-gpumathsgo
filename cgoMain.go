@@ -28,7 +28,7 @@ void *dlHandle;
 // x and y are contiguous chunks of memory, where each 2048 bits contains a big number.
 // TODO perf comparison for SoA/AoS
 // Also, perf comparison for prime getting loaded from constant memory
-struct powm_return_t*(*powmImpl_2048)(const void *prime, const void *instances, const uint32_t numInstances);
+struct powm_return_t*(*powmImpl_4096)(const void *prime, const void *instances, const uint32_t numInstances);
 
 // Returns error string
 // TODO: Should also set errno for cgo? (file not found type of thing)
@@ -43,7 +43,7 @@ char* loadLibrary() {
 		return error;
 	}
 
-	*(void**)(&powmImpl_2048) = dlsym(dlHandle, "powm_2048");
+	*(void**)(&powmImpl_4096) = dlsym(dlHandle, "powm_4096");
 	if ((error = dlerror()) != NULL) {
 		return error;
 	}
@@ -57,7 +57,7 @@ char *unloadLibrary() {
 	char *error;
 	if (dlHandle != NULL) {
 		// null out function pointers first
-		powmImpl_2048 = NULL;
+		powmImpl_4096 = NULL;
 		// clear dlerror
 		dlerror();
 		dlclose(dlHandle);
@@ -71,8 +71,8 @@ char *unloadLibrary() {
 }
 
 // Actually run the modular exponentiation on the GPU based on the loaded library
-struct powm_return_t *powm_2048(const void *prime, const void *instances, const uint32_t len) {
-	return (*powmImpl_2048)(prime, instances, len);
+struct powm_return_t *powm_4096(const void *prime, const void *instances, const uint32_t len) {
+	return (*powmImpl_4096)(prime, instances, len);
 }
 
 */
@@ -85,7 +85,7 @@ import (
 	"unsafe"
 )
 
-const bitLen = 2048
+const bitLen = 4096
 
 // Load the shared library and return any errors
 func loadLibrary() error {
@@ -112,7 +112,7 @@ func GoError(cString *C.char) error {
 // Lay out powm_2048 inputs in the correct order in a certain region of memory
 // len(x) must be equal to len(y)
 // For calculating x**y mod p
-func prepare_powm_2048_inputs(x []*cyclic.Int, y []*cyclic.Int, inputMem []byte) {
+func prepare_powm_4096_inputs(x []*cyclic.Int, y []*cyclic.Int, inputMem []byte) {
 	panic("Unimplemented")
 }
 
@@ -123,8 +123,8 @@ func setPrime(primeMem unsafe.Pointer) {
 
 // Calculate x**y mod p using CUDA
 // Results are put in a byte array for translation back to cyclic ints elsewhere
-func powm_2048(primeMem unsafe.Pointer, inputMem unsafe.Pointer, length uint32) ([]byte, error) {
-	powmResult := C.powm_2048(primeMem, inputMem, (C.uint)(length))
+func powm_4096(primeMem []byte, inputMem []byte, length uint32) ([]byte, error) {
+	powmResult := C.powm_4096(C.CBytes(primeMem), C.CBytes(inputMem), (C.uint)(length))
 	outputBytes := C.GoBytes(powmResult.outputs, (C.int)(bitLen / 8 * length))
 	// powmResult.outputs results in SIGABRT if freed here. Need to investigate further.
 	// Maybe the wrong amount of memory is getting freed? Or GoBytes frees automatically, assuming the memory's no longer
@@ -135,7 +135,7 @@ func powm_2048(primeMem unsafe.Pointer, inputMem unsafe.Pointer, length uint32) 
 }
 
 func main() {
-	// Not sure what q would be for MODP2048, so leaving it at 1
+	// Not sure what q would be for MODP4096, so leaving it at 1
 	g := cyclic.NewGroup(
 		large.NewIntFromString("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF", 16),
 		large.NewInt(2),
@@ -144,7 +144,7 @@ func main() {
 	// x**y mod p
 	x := g.NewIntFromString("102698389601429893247415098320984", 10)
 	y := g.NewIntFromString("8891261048623689650221543816983486", 10)
-	pMem := C.CBytes(g.GetP().CGBNMem(bitLen))
+	pMem := g.GetP().CGBNMem(bitLen)
 	result := g.Exp(x, y, g.NewInt(2))
 	fmt.Printf("result in Go: %v\n", result.TextVerbose(16, 0))
 	// x**y mod p: x (2048-4096 bits)
@@ -152,12 +152,12 @@ func main() {
 	var cgbnInputs []byte
 	cgbnInputs = append(cgbnInputs, x.CGBNMem(bitLen)...)
 	cgbnInputs = append(cgbnInputs, y.CGBNMem(bitLen)...)
-	inputsMem := C.CBytes(cgbnInputs)
+	inputsMem := cgbnInputs
 	err := loadLibrary()
 	if err != nil {
 		panic(err)
 	}
-	resultBytes, err := powm_2048(pMem, inputsMem, 1)
+	resultBytes, err := powm_4096(pMem, inputsMem, 1)
 	if err != nil {
 		panic(err)
 	}
