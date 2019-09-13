@@ -109,6 +109,13 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 
 	// Maybe don't load the library twice?
 	err := loadLibrary()
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = startProfiling()
+	if err != nil {
+		b.Fatal(err)
+	}
 	b.ResetTimer()
 	// We'll run the exponentiation for the whole array in one chunk
 	// It might be possible to run another benchmark that does two or more
@@ -121,6 +128,20 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	b.StopTimer()
 	// This benchmark doesn't include converting resulting memory back to cyclic ints
 	b.Log(results[0])
+	// Write out any cached profiling data
+	err = stopProfiling()
+	// Maybe we need to start profiling again for the next run?
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = resetDevice();
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = unloadLibrary()
+	if err != nil {
+		b.Fatal(err)
+	}
 }
 
 // x**y, x is 2048 bits long, y is 256 bits long
@@ -136,6 +157,13 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 
 	// Maybe don't load the library twice?
 	err := loadLibrary()
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = startProfiling()
+	if err != nil {
+		b.Fatal(err)
+	}
 	b.ResetTimer()
 	// We'll run the exponentiation for the whole array in one chunk
 	// It might be possible to run another benchmark that does two or more
@@ -148,4 +176,17 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	b.StopTimer()
 	// This benchmark doesn't include converting resulting memory back to cyclic ints
 	b.Log(results[0])
+	// Write out any cached profiling data
+	err = stopProfiling();
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = resetDevice();
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = unloadLibrary()
+	if err != nil {
+		b.Fatal(err)
+	}
 }
