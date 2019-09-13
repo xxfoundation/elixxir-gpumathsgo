@@ -2,7 +2,7 @@
 *.out
 .idea
 *.sw*
-gpumaths
+gpumaths*
 .cproject
 .project
 .settings

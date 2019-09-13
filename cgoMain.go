@@ -30,6 +30,13 @@ void *dlHandle;
 // Also, perf comparison for prime getting loaded from constant memory
 struct powm_return_t*(*powmImpl_4096)(const void *prime, const void *instances, const uint32_t numInstances);
 
+// Flush profiling data
+// Use this to finish profiling for short benchmarks
+// Returns error
+char* (*stopProfilingImpl)(void);
+char* (*startProfilingImpl)(void);
+char* (*resetDeviceImpl)(void);
+
 // Returns error string
 // TODO: Should also set errno for cgo? (file not found type of thing)
 //  Or, do the called methods do that already?
@@ -47,6 +54,18 @@ char* loadLibrary() {
 	if ((error = dlerror()) != NULL) {
 		return error;
 	}
+	*(void**)(&stopProfilingImpl) = dlsym(dlHandle, "stopProfiling");
+	if ((error = dlerror()) != NULL) {
+		return error;
+	}
+	*(void**)(&startProfilingImpl) = dlsym(dlHandle, "startProfiling");
+	if ((error = dlerror()) != NULL) {
+		return error;
+	}
+	*(void**)(&resetDeviceImpl) = dlsym(dlHandle, "resetDevice");
+	if ((error = dlerror()) != NULL) {
+		return error;
+	}
 
 	return NULL;
 }
@@ -58,6 +77,8 @@ char *unloadLibrary() {
 	if (dlHandle != NULL) {
 		// null out function pointers first
 		powmImpl_4096 = NULL;
+		startProfilingImpl = NULL;
+		stopProfilingImpl = NULL;
 		// clear dlerror
 		dlerror();
 		dlclose(dlHandle);
@@ -73,6 +94,20 @@ char *unloadLibrary() {
 // Actually run the modular exponentiation on the GPU based on the loaded library
 struct powm_return_t *powm_4096(const void *prime, const void *instances, const uint32_t len) {
 	return (*powmImpl_4096)(prime, instances, len);
+}
+
+char* startProfiling() {
+	return (*startProfilingImpl)();
+}
+
+char* stopProfiling() {
+	return (*stopProfilingImpl)();
+}
+
+// this may be needed to get the graphical profiler working correctly
+// however, it's not needed for nvprof
+char* resetDevice() {
+	return (*resetDeviceImpl)();
 }
 
 */
@@ -134,6 +169,30 @@ func powm_4096(primeMem []byte, inputMem []byte, length uint32) ([]byte, error) 
 	return outputBytes, err
 }
 
+// Start GPU profiling
+// You need to call this if you're starting and stopping profiling all willy-nilly,
+// like for a benchmark
+func startProfiling() error {
+	errString := C.startProfiling()
+	err := GoError(errString)
+	return err
+}
+
+// Stop GPU profiling
+func stopProfiling() error {
+	errString := C.stopProfiling()
+	err := GoError(errString)
+	return err
+}
+
+// Reset the CUDA device
+// Hopefully this will allow the CUDA profile to be gotten in the graphical profiler
+func resetDevice() error {
+	errString := C.resetDevice()
+	err := GoError(errString)
+	return err
+}
+
 func main() {
 	// Not sure what q would be for MODP4096, so leaving it at 1
 	g := cyclic.NewGroup(
@@ -163,6 +222,14 @@ func main() {
 	}
 	resultInt := g.NewIntFromCGBN(resultBytes[:bitLen/8])
 	fmt.Printf("result in Go from CUDA: %v\n", resultInt.TextVerbose(16, 0))
+	err = stopProfiling()
+	if err != nil {
+		panic(err)
+	}
+	err = resetDevice()
+	if err != nil {
+		panic(err)
+	}
 	err = unloadLibrary()
 	if err != nil {
 		panic(err)
