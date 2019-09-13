@@ -3,3 +3,6 @@
 .idea
 *.sw*
 gpumaths
+.cproject
+.project
+.settings
