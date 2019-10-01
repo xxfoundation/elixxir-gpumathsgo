@@ -1,115 +1,9 @@
 package main
 
 /*
-#cgo LDFLAGS: -ldl
-#include <stdio.h>
-#include <stdint.h>
-#include <dlfcn.h>
-#include <stddef.h>
+#cgo LDFLAGS: -Llib -lpowmosm75 -Wl,-rpath -Wl,./lib
+#include "cgbnBindings/powm/powm_odd_export.h"
 #include <stdlib.h>
-
-// The powm implementation should return a struct that's sort of equivalent to this
-struct powm_return_t {
-	// Because of type incompatibility, CGO would return these values as an unsafe pointer anyway.
-	// So there's no reason to try to get a type that's compatible with the C++ memory here.
-	// It would just get converted to an unsafe pointer anyway.
-	void *outputs;
-	char *error;
-};
-
-// The following function pointers and handle get populated whenever loadLibrary() is called,
-// and depopulated whenever unloadLibrary() is called.
-void *dlHandle;
-
-// Perform modular exponentiation on the passed instances.
-// Returned instances will be populated with the result of the modular exponentiations.
-// The returned struct includes an error string
-// x ** y mod prime
-// x and y are contiguous chunks of memory, where each 2048 bits contains a big number.
-// TODO perf comparison for SoA/AoS
-// Also, perf comparison for prime getting loaded from constant memory
-struct powm_return_t*(*powmImpl_4096)(const void *prime, const void *instances, const uint32_t numInstances);
-
-// Flush profiling data
-// Use this to finish profiling for short benchmarks
-// Returns error
-char* (*stopProfilingImpl)(void);
-char* (*startProfilingImpl)(void);
-char* (*resetDeviceImpl)(void);
-
-// Returns error string
-// TODO: Should also set errno for cgo? (file not found type of thing)
-//  Or, do the called methods do that already?
-// Get errno for the file i/o error if the shared library can't be accessed or found
-char* loadLibrary() {
-	dlHandle = dlopen("./lib/libpowmosm75.so", RTLD_LAZY);
-	char *error;
-	// clear dlerror
-	dlerror();
-	if ((error = dlerror()) != NULL) {
-		return error;
-	}
-
-	*(void**)(&powmImpl_4096) = dlsym(dlHandle, "powm_4096");
-	if ((error = dlerror()) != NULL) {
-		return error;
-	}
-	*(void**)(&stopProfilingImpl) = dlsym(dlHandle, "stopProfiling");
-	if ((error = dlerror()) != NULL) {
-		return error;
-	}
-	*(void**)(&startProfilingImpl) = dlsym(dlHandle, "startProfiling");
-	if ((error = dlerror()) != NULL) {
-		return error;
-	}
-	*(void**)(&resetDeviceImpl) = dlsym(dlHandle, "resetDevice");
-	if ((error = dlerror()) != NULL) {
-		return error;
-	}
-
-	return NULL;
-}
-
-// Unloading the library invalidates all the loaded function pointers
-// To make debugging more obvious, they're set to NULL before the dynamic library is closed
-char *unloadLibrary() {
-	char *error;
-	if (dlHandle != NULL) {
-		// null out function pointers first
-		powmImpl_4096 = NULL;
-		startProfilingImpl = NULL;
-		stopProfilingImpl = NULL;
-		// clear dlerror
-		dlerror();
-		dlclose(dlHandle);
-		if ((error = dlerror()) != NULL) {
-			return error;
-		}
-		return NULL;
-	} else {
-		return "Cannot unload library that hasn't been loaded";
-	}
-}
-
-// Actually run the modular exponentiation on the GPU based on the loaded library
-struct powm_return_t *powm_4096(const void *prime, const void *instances, const uint32_t len) {
-	return (*powmImpl_4096)(prime, instances, len);
-}
-
-char* startProfiling() {
-	return (*startProfilingImpl)();
-}
-
-char* stopProfiling() {
-	return (*stopProfilingImpl)();
-}
-
-// this may be needed to get the graphical profiler working correctly
-// however, it's not needed for nvprof
-char* resetDevice() {
-	return (*resetDeviceImpl)();
-}
-
 */
 import "C"
 import (
@@ -123,16 +17,6 @@ import (
 const bitLen = 4096
 
 // Load the shared library and return any errors
-func loadLibrary() error {
-	return GoError(C.loadLibrary())
-}
-
-// Unload the shared library and return any errors
-// This will prevent any calls into the library from working
-func unloadLibrary() error {
-	return GoError(C.unloadLibrary())
-}
-
 // Copies a C string into a Go error and frees the C string
 func GoError(cString *C.char) error {
 	if cString != nil {
@@ -160,7 +44,7 @@ func setPrime(primeMem unsafe.Pointer) {
 // Results are put in a byte array for translation back to cyclic ints elsewhere
 func powm_4096(primeMem []byte, inputMem []byte, length uint32) ([]byte, error) {
 	powmResult := C.powm_4096(C.CBytes(primeMem), C.CBytes(inputMem), (C.uint)(length))
-	outputBytes := C.GoBytes(powmResult.outputs, (C.int)(bitLen / 8 * length))
+	outputBytes := C.GoBytes(powmResult.results, (C.int)(bitLen / 8 * length))
 	// powmResult.outputs results in SIGABRT if freed here. Need to investigate further.
 	// Maybe the wrong amount of memory is getting freed? Or GoBytes frees automatically, assuming the memory's no longer
 	// needed?
@@ -212,10 +96,6 @@ func main() {
 	cgbnInputs = append(cgbnInputs, x.CGBNMem(bitLen)...)
 	cgbnInputs = append(cgbnInputs, y.CGBNMem(bitLen)...)
 	inputsMem := cgbnInputs
-	err := loadLibrary()
-	if err != nil {
-		panic(err)
-	}
 	resultBytes, err := powm_4096(pMem, inputsMem, 1)
 	if err != nil {
 		panic(err)
@@ -227,10 +107,6 @@ func main() {
 		panic(err)
 	}
 	err = resetDevice()
-	if err != nil {
-		panic(err)
-	}
-	err = unloadLibrary()
 	if err != nil {
 		panic(err)
 	}
