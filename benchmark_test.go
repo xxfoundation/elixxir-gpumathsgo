@@ -108,11 +108,7 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	pMem := g.GetP().CGBNMem(bitLen)
 
 	// Maybe don't load the library twice?
-	err := loadLibrary()
-	if err != nil {
-		b.Fatal(err)
-	}
-	err = startProfiling()
+	err := startProfiling()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -138,10 +134,6 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	err = unloadLibrary()
-	if err != nil {
-		b.Fatal(err)
-	}
 }
 
 // x**y, x is 2048 bits long, y is 256 bits long
@@ -156,11 +148,7 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	pMem := g.GetP().CGBNMem(bitLen)
 
 	// Maybe don't load the library twice?
-	err := loadLibrary()
-	if err != nil {
-		b.Fatal(err)
-	}
-	err = startProfiling()
+	err := startProfiling()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -182,10 +170,6 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 		b.Fatal(err)
 	}
 	err = resetDevice();
-	if err != nil {
-		b.Fatal(err)
-	}
-	err = unloadLibrary()
 	if err != nil {
 		b.Fatal(err)
 	}
