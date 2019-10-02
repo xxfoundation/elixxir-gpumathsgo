@@ -28,7 +28,7 @@ func GoError(cString *C.char) error {
 	return nil
 }
 
-// Lay out powm_2048 inputs in the correct order in a certain region of memory
+// Lay out powm_4096 inputs in the correct order in a certain region of memory
 // len(x) must be equal to len(y)
 // For calculating x**y mod p
 func prepare_powm_4096_inputs(x []*cyclic.Int, y []*cyclic.Int, inputMem []byte) {
@@ -90,7 +90,7 @@ func main() {
 	pMem := g.GetP().CGBNMem(bitLen)
 	result := g.Exp(x, y, g.NewInt(2))
 	fmt.Printf("result in Go: %v\n", result.TextVerbose(16, 0))
-	// x**y mod p: x (2048-4096 bits)
+	// x**y mod p: x (4096 bits)
 	// For more than one X and Y, they would be appended in the list
 	var cgbnInputs []byte
 	cgbnInputs = append(cgbnInputs, x.CGBNMem(bitLen)...)
