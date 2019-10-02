@@ -42,9 +42,16 @@ func setPrime(primeMem unsafe.Pointer) {
 
 // Calculate x**y mod p using CUDA
 // Results are put in a byte array for translation back to cyclic ints elsewhere
+// Currently, we upload and execute all in the same method
 func powm_4096(primeMem []byte, inputMem []byte, length uint32) ([]byte, error) {
-	powmResult := C.powm_4096(C.CBytes(primeMem), C.CBytes(inputMem), (C.uint)(length))
-	outputBytes := C.GoBytes(powmResult.results, (C.int)(bitLen / 8 * length))
+	uploadResult := C.upload_powm_4096(C.CBytes(primeMem), C.CBytes(inputMem), (C.uint)(length))
+	if uploadResult.error != nil {
+		err := GoError(uploadResult.error)
+		C.free((unsafe.Pointer)(uploadResult))
+		return nil, err
+	}
+	powmResult := C.run_powm_4096(uploadResult.result)
+	outputBytes := C.GoBytes(powmResult.result, (C.int)(bitLen / 8 * length))
 	// powmResult.outputs results in SIGABRT if freed here. Need to investigate further.
 	// Maybe the wrong amount of memory is getting freed? Or GoBytes frees automatically, assuming the memory's no longer
 	// needed?
