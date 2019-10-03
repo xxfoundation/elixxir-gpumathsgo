@@ -28,7 +28,7 @@ func GoError(cString *C.char) error {
 	return nil
 }
 
-// Lay out powm_2048 inputs in the correct order in a certain region of memory
+// Lay out powm_4096 inputs in the correct order in a certain region of memory
 // len(x) must be equal to len(y)
 // For calculating x**y mod p
 func prepare_powm_4096_inputs(x []*cyclic.Int, y []*cyclic.Int, inputMem []byte) {
@@ -40,16 +40,35 @@ func setPrime(primeMem unsafe.Pointer) {
 	panic("Unimplemented")
 }
 
+func freeResult(result *C.struct_return_data) {
+	if result != nil {
+		if result.result != nil {
+			C.free((unsafe.Pointer)(result.result))
+		}
+		if result.error != nil {
+			C.free(unsafe.Pointer(result.error))
+		}
+		C.free((unsafe.Pointer)(result))
+	}
+}
+
 // Calculate x**y mod p using CUDA
 // Results are put in a byte array for translation back to cyclic ints elsewhere
+// Currently, we upload and execute all in the same method
 func powm_4096(primeMem []byte, inputMem []byte, length uint32) ([]byte, error) {
-	powmResult := C.powm_4096(C.CBytes(primeMem), C.CBytes(inputMem), (C.uint)(length))
-	outputBytes := C.GoBytes(powmResult.results, (C.int)(bitLen / 8 * length))
+	uploadResult := C.upload_powm_4096(C.CBytes(primeMem), C.CBytes(inputMem), (C.uint)(length))
+	defer freeResult(uploadResult)
+	if uploadResult.error != nil {
+		// there was an error, so get it
+		return nil, GoError(uploadResult.error)
+	}
+	powmResult := C.run_powm_4096(uploadResult.result)
+	defer freeResult(powmResult)
+	outputBytes := C.GoBytes(powmResult.result, (C.int)(bitLen / 8 * length))
 	// powmResult.outputs results in SIGABRT if freed here. Need to investigate further.
 	// Maybe the wrong amount of memory is getting freed? Or GoBytes frees automatically, assuming the memory's no longer
 	// needed?
 	err := GoError(powmResult.error)
-	C.free((unsafe.Pointer)(powmResult))
 	return outputBytes, err
 }
 
@@ -90,7 +109,7 @@ func main() {
 	pMem := g.GetP().CGBNMem(bitLen)
 	result := g.Exp(x, y, g.NewInt(2))
 	fmt.Printf("result in Go: %v\n", result.TextVerbose(16, 0))
-	// x**y mod p: x (2048-4096 bits)
+	// x**y mod p: x (4096 bits)
 	// For more than one X and Y, they would be appended in the list
 	var cgbnInputs []byte
 	cgbnInputs = append(cgbnInputs, x.CGBNMem(bitLen)...)
