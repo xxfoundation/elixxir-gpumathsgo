@@ -60,8 +60,8 @@ func powm_4096(primeMem []byte, inputMem []byte, length uint32) ([]byte, error) 
 	streamManagerCreateInfo := C.struct_streamManagerCreateInfo {
 		numStreams: 1,
 		capacity: cLength,
-		inputSize: C.getInputsSize_powm4096(cLength),
-		outputSize: C.getOutputsSize_powm4096(cLength),
+		inputsSize: C.getInputsSize_powm4096(cLength),
+		outputsSize: C.getOutputsSize_powm4096(cLength),
 		constantsSize: C.getConstantsSize_powm4096(),
 	}
 	createStreamManagerResult := C.createStreamManager(streamManagerCreateInfo)
@@ -78,13 +78,18 @@ func powm_4096(primeMem []byte, inputMem []byte, length uint32) ([]byte, error) 
 		// there was an error, so get it
 		return nil, GoError(uploadError)
 	}
-	powmResult := C.run_powm_4096(stream)
-	defer freeResult(powmResult)
-	outputBytes := C.GoBytes(powmResult.result, (C.int)(C.getOutputsSize_powm4096(cLength)))
+	runError := C.run_powm_4096(stream)
+	if runError != nil {
+		return nil, GoError(runError)
+	}
+	downloadResult := C.download_powm_4096(stream)
+	defer freeResult(downloadResult)
+
+	outputBytes := C.GoBytes(downloadResult.result, (C.int)(C.getOutputsSize_powm4096(cLength)))
 	// powmResult.outputs results in SIGABRT if freed here. Need to investigate further.
 	// Maybe the wrong amount of memory is getting freed? Or GoBytes frees automatically, assuming the memory's no longer
 	// needed?
-	err := GoError(powmResult.error)
+	err := GoError(downloadResult.error)
 	return outputBytes, err
 }
 
