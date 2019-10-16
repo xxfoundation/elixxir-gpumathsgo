@@ -56,15 +56,31 @@ func freeResult(result *C.struct_return_data) {
 // Results are put in a byte array for translation back to cyclic ints elsewhere
 // Currently, we upload and execute all in the same method
 func powm_4096(primeMem []byte, inputMem []byte, length uint32) ([]byte, error) {
-	uploadResult := C.upload_powm_4096(C.CBytes(primeMem), C.CBytes(inputMem), (C.uint)(length))
-	defer freeResult(uploadResult)
-	if uploadResult.error != nil {
-		// there was an error, so get it
-		return nil, GoError(uploadResult.error)
+	cLength := (C.size_t)(length)
+	streamManagerCreateInfo := C.struct_streamManagerCreateInfo {
+		numStreams: 1,
+		capacity: cLength,
+		inputSize: C.getInputsSize_powm4096(cLength),
+		outputSize: C.getOutputsSize_powm4096(cLength),
+		constantsSize: C.getConstantsSize_powm4096(),
 	}
-	powmResult := C.run_powm_4096(uploadResult.result)
+	createStreamManagerResult := C.createStreamManager(streamManagerCreateInfo)
+	// Need to call custom destructor for the stream manager
+	defer C.destroyStreamManager(createStreamManagerResult.result)
+	defer C.free((unsafe.Pointer)(createStreamManagerResult))
+	if createStreamManagerResult.error != nil {
+		return nil, GoError(createStreamManagerResult.error)
+	}
+	streamManager := createStreamManagerResult.result
+	stream := C.getNextStream(streamManager)
+	uploadError := C.upload_powm_4096(C.CBytes(primeMem), C.CBytes(inputMem), (C.uint)(length), stream)
+	if uploadError != nil {
+		// there was an error, so get it
+		return nil, GoError(uploadError)
+	}
+	powmResult := C.run_powm_4096(stream)
 	defer freeResult(powmResult)
-	outputBytes := C.GoBytes(powmResult.result, (C.int)(bitLen / 8 * length))
+	outputBytes := C.GoBytes(powmResult.result, (C.int)(C.getOutputsSize_powm4096(cLength)))
 	// powmResult.outputs results in SIGABRT if freed here. Need to investigate further.
 	// Maybe the wrong amount of memory is getting freed? Or GoBytes frees automatically, assuming the memory's no longer
 	// needed?
