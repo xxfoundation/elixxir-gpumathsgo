@@ -57,7 +57,7 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	// It might be possible to run another benchmark that does two or more
 	// chunks instead, which could be faster if the call could be made
 	// asynchronous (which should be possible)
-	results, err = powm_4096(pMem, inputMem, uint32(b.N))
+	results, err = powm4096(pMem, inputMem, b.N)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	// It might be possible to run another benchmark that does two or more
 	// chunks instead, which could be faster if the call could be made
 	// asynchronous (which should be possible)
-	results, err = powm_4096(pMem, inputMem, uint32(b.N))
+	results, err = powm4096(pMem, inputMem, b.N)
 	if err != nil {
 		b.Fatal(err)
 	}

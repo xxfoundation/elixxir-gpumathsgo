@@ -28,15 +28,10 @@ func GoError(cString *C.char) error {
 	return nil
 }
 
-// Lay out powm_4096 inputs in the correct order in a certain region of memory
+// Lay out powm4096 inputs in the correct order in a certain region of memory
 // len(x) must be equal to len(y)
 // For calculating x**y mod p
 func prepare_powm_4096_inputs(x []*cyclic.Int, y []*cyclic.Int, inputMem []byte) {
-	panic("Unimplemented")
-}
-
-// Set the prime in CUDA constant memory
-func setPrime(primeMem unsafe.Pointer) {
 	panic("Unimplemented")
 }
 
@@ -52,45 +47,94 @@ func freeResult(result *C.struct_return_data) {
 	}
 }
 
+func getInputsSizePowm4096(length int) int {
+	return int(C.getInputsSize_powm4096((C.size_t)(length)))
+}
+
+func getOutputsSizePowm4096(length int) int {
+	return int(C.getOutputsSize_powm4096((C.size_t)(length)))
+}
+
+func getConstantsSizePowm4096() int {
+	return int(C.getConstantsSize_powm4096())
+}
+
+// It would be nice to more easily pass the type of operation for creating the stream manager
+// Returns pointer representing the stream manager
+func createStreamManagerPowm4096(numStreams int, capacity int) (unsafe.Pointer, error) {
+	streamManagerCreateInfo := C.struct_streamManagerCreateInfo{
+		numStreams:    (C.size_t)(numStreams),
+		capacity:      (C.size_t)(capacity),
+		inputsSize:    (C.size_t)(getInputsSizePowm4096(capacity)),
+		outputsSize:   (C.size_t)(getOutputsSizePowm4096(capacity)),
+		constantsSize: (C.size_t)(getConstantsSizePowm4096()),
+	}
+	createStreamManagerResult := C.createStreamManager(streamManagerCreateInfo)
+	defer C.free((unsafe.Pointer)(createStreamManagerResult))
+	if createStreamManagerResult.error != nil {
+		// nanc Can destroyStreamManager properly handle the case where streamManager was created partially due to an error?
+		// This could actually be incorrect behavior
+		defer C.destroyStreamManager(createStreamManagerResult.result)
+		return nil, GoError(createStreamManagerResult.error)
+	}
+	return createStreamManagerResult.result, nil
+}
+
+func destroyStreamManager(streamManager unsafe.Pointer) error {
+	err := C.destroyStreamManager(streamManager)
+	if err != nil {
+		return GoError(err)
+	}
+	return nil
+}
+
 // Calculate x**y mod p using CUDA
 // Results are put in a byte array for translation back to cyclic ints elsewhere
 // Currently, we upload and execute all in the same method
-func powm_4096(primeMem []byte, inputMem []byte, length uint32) ([]byte, error) {
-	cLength := (C.size_t)(length)
-	streamManagerCreateInfo := C.struct_streamManagerCreateInfo {
-		numStreams: 1,
-		capacity: cLength,
-		inputsSize: C.getInputsSize_powm4096(cLength),
-		outputsSize: C.getOutputsSize_powm4096(cLength),
-		constantsSize: C.getConstantsSize_powm4096(),
-	}
-	createStreamManagerResult := C.createStreamManager(streamManagerCreateInfo)
-	// Need to call custom destructor for the stream manager
-	defer C.destroyStreamManager(createStreamManagerResult.result)
-	defer C.free((unsafe.Pointer)(createStreamManagerResult))
-	if createStreamManagerResult.error != nil {
-		return nil, GoError(createStreamManagerResult.error)
-	}
-	streamManager := createStreamManagerResult.result
+
+// Upload some items to the next stream
+// Returns the stream that the data were uploaded to
+func uploadPowm4096(primeMem []byte, inputMem []byte, length int, streamManager unsafe.Pointer) (unsafe.Pointer, error) {
 	stream := C.getNextStream(streamManager)
 	uploadError := C.upload_powm_4096(C.CBytes(primeMem), C.CBytes(inputMem), (C.uint)(length), stream)
 	if uploadError != nil {
-		// there was an error, so get it
 		return nil, GoError(uploadError)
+	} else {
+		return stream, nil
 	}
-	runError := C.run_powm_4096(stream)
-	if runError != nil {
-		return nil, GoError(runError)
-	}
+}
+
+func runPowm4096(stream unsafe.Pointer) error {
+	return GoError(C.run_powm_4096(stream))
+}
+
+func downloadPowm4096(stream unsafe.Pointer, numOutputs int) ([]byte, error) {
 	downloadResult := C.download_powm_4096(stream)
 	defer freeResult(downloadResult)
+	return C.GoBytes(downloadResult.result, C.int(getOutputsSizePowm4096(numOutputs))), GoError(downloadResult.error)
+}
 
-	outputBytes := C.GoBytes(downloadResult.result, (C.int)(C.getOutputsSize_powm4096(cLength)))
-	// powmResult.outputs results in SIGABRT if freed here. Need to investigate further.
-	// Maybe the wrong amount of memory is getting freed? Or GoBytes frees automatically, assuming the memory's no longer
-	// needed?
-	err := GoError(downloadResult.error)
-	return outputBytes, err
+// Deprecated. Use the decomposed methods instead
+func powm4096(primeMem []byte, inputMem []byte, length int) ([]byte, error) {
+	streamManager, err := createStreamManagerPowm4096(1, length)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err := destroyStreamManager(streamManager)
+		if err != nil {
+			panic(err)
+		}
+	}()
+	stream, err := uploadPowm4096(primeMem, inputMem, length, streamManager)
+	if err != nil {
+		return nil, err
+	}
+	err = runPowm4096(stream)
+	if err != nil {
+		return nil, err
+	}
+	return downloadPowm4096(stream, length)
 }
 
 // Start GPU profiling
@@ -136,7 +180,7 @@ func main() {
 	cgbnInputs = append(cgbnInputs, x.CGBNMem(bitLen)...)
 	cgbnInputs = append(cgbnInputs, y.CGBNMem(bitLen)...)
 	inputsMem := cgbnInputs
-	resultBytes, err := powm_4096(pMem, inputsMem, 1)
+	resultBytes, err := powm4096(pMem, inputsMem, 1)
 	if err != nil {
 		panic(err)
 	}
