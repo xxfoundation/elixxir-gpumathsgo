@@ -70,7 +70,7 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	err = resetDevice();
+	err = resetDevice()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -105,11 +105,11 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	// This benchmark doesn't include converting resulting memory back to cyclic ints
 	b.Log(results[0])
 	// Write out any cached profiling data
-	err = stopProfiling();
+	err = stopProfiling()
 	if err != nil {
 		b.Fatal(err)
 	}
-	err = resetDevice();
+	err = resetDevice()
 	if err != nil {
 		b.Fatal(err)
 	}
