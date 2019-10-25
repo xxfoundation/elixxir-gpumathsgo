@@ -131,17 +131,16 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 
 	// This benchmark is "cheating" compared to the last one by doing allocations before the timer's reset
 	// Use two streams with 2048 items per kernel launch
-	numItems := 8192
+	numItems := 32768
 	inputMem := benchmarkInputMemGenerator(g, xByteLen, yByteLen, numItems, xByteLen)
 
 	streamManager, err := createStreamManagerPowm4096(3, numItems)
 	if err != nil {
 		b.Fatal(err)
 	}
-	var stream, lastStream unsafe.Pointer
+	var stream1, stream2, stream3 unsafe.Pointer
 	b.ResetTimer()
 	remainingItems := b.N
-	var numItemsToDownload int
 	for i := 0; i < b.N; i += numItems {
 		// If part of a chunk remains, only upload that part
 		remainingItems = b.N - i
@@ -149,39 +148,53 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		if remainingItems < numItems {
 			numItemsToUpload = remainingItems
 		}
-		stream, err = uploadPowm4096(pMem, <-inputMem, numItemsToUpload, streamManager)
+		stream1, err = uploadPowm4096(pMem, <-inputMem, numItemsToUpload, streamManager)
 		if err != nil {
 			b.Fatal(err)
 		}
-		err = runPowm4096(stream)
+		err = runPowm4096(stream1)
 		if err != nil {
 			b.Fatal(err)
 		}
 		// Download items from the last stream after starting work in this stream
-		if lastStream != nil {
-			_, err := downloadPowm4096(lastStream, numItemsToDownload)
+		if stream2 != nil {
+			err := downloadPowm4096(stream2)
 			if err != nil {
 				b.Fatal(err)
 			}
 		}
-		lastStream = stream
-		numItemsToDownload = numItemsToUpload
+		// Copy inputs from the stream before that (this is required for meaningful usage)
+		if stream3 != nil {
+			// The number of items isn't correct, but it shouldn't make a big difference to the benchmark.
+			_, err := getResultsPowm4096(stream3, numItems)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+		// rotate streams
+		stream3 = stream2
+		stream2 = stream1
 	}
 	// Download the last results
-	_, err = downloadPowm4096(lastStream, numItemsToDownload)
+	err = downloadPowm4096(stream2)
 	if err != nil {
 		b.Fatal(err)
 	}
+	_, err = getResultsPowm4096(stream2, numItems)
+	if err != nil {
+		b.Fatal(err)
+	}
+	// FIXME The benchmark doesn't wait for downloads to finish! This makes the results INCORRECT (potentially?). Fix it
 	b.StopTimer()
 	err = destroyStreamManager(streamManager)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-        err = stopProfiling()
-        if err != nil {
-        b.Fatal(err)
-      }
+	err = stopProfiling()
+	if err != nil {
+		b.Fatal(err)
+	}
 	err = resetDevice()
 	if err != nil {
 		b.Fatal(err)

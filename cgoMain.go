@@ -4,6 +4,7 @@ package main
 #cgo LDFLAGS: -Llib -lpowmosm75 -Wl,-rpath -Wl,./lib
 #include "cgbnBindings/powm/powm_odd_export.h"
 #include <stdlib.h>
+#include <string.h>
 */
 import "C"
 import (
@@ -33,18 +34,6 @@ func GoError(cString *C.char) error {
 // For calculating x**y mod p
 func prepare_powm_4096_inputs(x []*cyclic.Int, y []*cyclic.Int, inputMem []byte) {
 	panic("Unimplemented")
-}
-
-func freeResult(result *C.struct_return_data) {
-	if result != nil {
-		if result.result != nil {
-			C.free((unsafe.Pointer)(result.result))
-		}
-		if result.error != nil {
-			C.free(unsafe.Pointer(result.error))
-		}
-		C.free((unsafe.Pointer)(result))
-	}
 }
 
 func getInputsSizePowm4096(length int) int {
@@ -96,7 +85,16 @@ func destroyStreamManager(streamManager unsafe.Pointer) error {
 // Returns the stream that the data were uploaded to
 func uploadPowm4096(primeMem []byte, inputMem []byte, length int, streamManager unsafe.Pointer) (unsafe.Pointer, error) {
 	stream := C.getNextStream(streamManager)
-	uploadError := C.upload_powm_4096(C.CBytes(primeMem), C.CBytes(inputMem), (C.uint)(length), stream)
+	// get pointers to pinned memory
+	inputs := C.getCpuInputs(stream)
+	constants := C.getCpuConstants(stream)
+	// copy to pinned memory
+	// I assume that a normal golang copy() call wouldn't work,
+	// because they aren't both slices
+	C.memcpy(inputs, (unsafe.Pointer)(&inputMem[0]), (C.size_t)(getInputsSizePowm4096(length)))
+	C.memcpy(constants, (unsafe.Pointer)(&primeMem[0]), (C.size_t)(getConstantsSizePowm4096()))
+	// queue upload
+	uploadError := C.upload_powm_4096((C.uint)(length), stream)
 	if uploadError != nil {
 		return nil, GoError(uploadError)
 	} else {
@@ -108,10 +106,22 @@ func runPowm4096(stream unsafe.Pointer) error {
 	return GoError(C.run_powm_4096(stream))
 }
 
-func downloadPowm4096(stream unsafe.Pointer, numOutputs int) ([]byte, error) {
-	downloadResult := C.download_powm_4096(stream)
-	defer freeResult(downloadResult)
-	return C.GoBytes(downloadResult.result, C.int(getOutputsSizePowm4096(numOutputs))), GoError(downloadResult.error)
+// Enqueue a download for this stream after execution finishes
+// Doesn't actually block for the download
+func downloadPowm4096(stream unsafe.Pointer) error {
+	return GoError(C.download_powm_4096(stream))
+}
+
+// Wait for this stream's download to finish and return a pointer to the results
+// This also checks the CGBN error report (presumably this is where things should be checked, if not now, then in the future, to see whether they're in the group or not. However this may not(?) be doable if everything is in Montgomery space.)
+func getResultsPowm4096(stream unsafe.Pointer, numOutputs int) ([]byte, error) {
+	result := C.getResults_powm(stream)
+	// Only need to free the result, not the underlying pointers
+	// result.result is a long-lived pinned memory buffer, and it doesn't need to be freed
+	defer C.free(unsafe.Pointer(result))
+	resultBytes := C.GoBytes(result.result, (C.int)(getOutputsSizePowm4096(numOutputs)))
+	resultError := GoError(result.error)
+	return resultBytes, resultError
 }
 
 // Deprecated. Use the decomposed methods instead
@@ -134,7 +144,11 @@ func powm4096(primeMem []byte, inputMem []byte, length int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return downloadPowm4096(stream, length)
+	err = downloadPowm4096(stream)
+	if err != nil {
+		return nil, err
+	}
+	return getResultsPowm4096(stream, length)
 }
 
 // Start GPU profiling
