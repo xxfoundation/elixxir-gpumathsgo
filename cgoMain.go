@@ -50,29 +50,40 @@ func getConstantsSizePowm4096() int {
 
 // It would be nice to more easily pass the type of operation for creating the stream manager
 // Returns pointer representing the stream manager
-func createStreamManagerPowm4096(numStreams int, capacity int) (unsafe.Pointer, error) {
-	streamManagerCreateInfo := C.struct_streamManagerCreateInfo{
-		numStreams:    (C.size_t)(numStreams),
+// If it's not magnificently inefficient, we could probably just create
+// streams once and just not worry about lifetimes for them
+// However, this will require having enough space for the inputs of all operations
+func createStreamsPowm4096(numStreams int, capacity int) ([]unsafe.Pointer, error) {
+	streamCreateInfo := C.struct_streamCreateInfo{
 		capacity:      (C.size_t)(capacity),
 		inputsSize:    (C.size_t)(getInputsSizePowm4096(capacity)),
 		outputsSize:   (C.size_t)(getOutputsSizePowm4096(capacity)),
 		constantsSize: (C.size_t)(getConstantsSizePowm4096()),
 	}
-	createStreamManagerResult := C.createStreamManager(streamManagerCreateInfo)
-	defer C.free((unsafe.Pointer)(createStreamManagerResult))
-	if createStreamManagerResult.error != nil {
-		// nanc Can destroyStreamManager properly handle the case where streamManager was created partially due to an error?
-		// This could actually be incorrect behavior
-		defer C.destroyStreamManager(createStreamManagerResult.result)
-		return nil, GoError(createStreamManagerResult.error)
+
+	streams := make([]unsafe.Pointer, 0, numStreams)
+
+	for i := 0; i < numStreams; i++ {
+		createStreamResult := C.createStream(streamCreateInfo)
+		if createStreamResult.error != nil {
+			// TODO Clean up all streams when an error occurs
+			return nil, GoError(createStreamResult.error)
+		}
+		stream := createStreamResult.result
+		if stream != nil {
+			streams = append(streams, stream)
+		}
 	}
-	return createStreamManagerResult.result, nil
+
+	return streams, nil
 }
 
-func destroyStreamManager(streamManager unsafe.Pointer) error {
-	err := C.destroyStreamManager(streamManager)
-	if err != nil {
-		return GoError(err)
+func destroyStreams(streams []unsafe.Pointer) error {
+	for i := 0; i < len(streams); i++ {
+		err := C.destroyStream(streams[i])
+		if err != nil {
+			return GoError(err)
+		}
 	}
 	return nil
 }
@@ -83,8 +94,7 @@ func destroyStreamManager(streamManager unsafe.Pointer) error {
 
 // Upload some items to the next stream
 // Returns the stream that the data were uploaded to
-func uploadPowm4096(primeMem []byte, inputMem []byte, length int, streamManager unsafe.Pointer) (unsafe.Pointer, error) {
-	stream := C.getNextStream(streamManager)
+func uploadPowm4096(primeMem []byte, inputMem []byte, length int, stream unsafe.Pointer) error {
 	// get pointers to pinned memory
 	inputs := C.getCpuInputs(stream)
 	constants := C.getCpuConstants(stream)
@@ -96,9 +106,9 @@ func uploadPowm4096(primeMem []byte, inputMem []byte, length int, streamManager 
 	// queue upload
 	uploadError := C.upload_powm_4096((C.uint)(length), stream)
 	if uploadError != nil {
-		return nil, GoError(uploadError)
+		return GoError(uploadError)
 	} else {
-		return stream, nil
+		return nil
 	}
 }
 
@@ -126,17 +136,18 @@ func getResultsPowm4096(stream unsafe.Pointer, numOutputs int) ([]byte, error) {
 
 // Deprecated. Use the decomposed methods instead
 func powm4096(primeMem []byte, inputMem []byte, length int) ([]byte, error) {
-	streamManager, err := createStreamManagerPowm4096(1, length)
+	streams, err := createStreamsPowm4096(1, length)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
-		err := destroyStreamManager(streamManager)
+		err := destroyStreams(streams)
 		if err != nil {
 			panic(err)
 		}
 	}()
-	stream, err := uploadPowm4096(primeMem, inputMem, length, streamManager)
+	stream := streams[0]
+	err = uploadPowm4096(primeMem, inputMem, length, stream)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +191,6 @@ func main() {
 	g := cyclic.NewGroup(
 		large.NewIntFromString("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF", 16),
 		large.NewInt(2),
-		large.NewInt(1),
 	)
 	// x**y mod p
 	x := g.NewIntFromString("102698389601429893247415098320984", 10)

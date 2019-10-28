@@ -5,7 +5,6 @@ import (
 	"gitlab.com/elixxir/crypto/large"
 	"math/rand"
 	"testing"
-	"unsafe"
 )
 
 func benchmarkInputMemGenerator(g *cyclic.Group, xNumBytes, yNumBytes, n int, byteSizePerBN uint64) chan []byte {
@@ -43,7 +42,6 @@ func makeTestGroup4096() *cyclic.Group {
 	return cyclic.NewGroup(
 		p,
 		large.NewInt(2),
-		large.NewInt(1),
 	)
 }
 
@@ -134,11 +132,13 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 	numItems := 32768
 	inputMem := benchmarkInputMemGenerator(g, xByteLen, yByteLen, numItems, xByteLen)
 
-	streamManager, err := createStreamManagerPowm4096(3, numItems)
+	numStreams := 2
+	streams, err := createStreamsPowm4096(numStreams, numItems)
+	workingStream := streams[0]
+	waitingStream := streams[1]
 	if err != nil {
 		b.Fatal(err)
 	}
-	var stream1, stream2, stream3 unsafe.Pointer
 	b.ResetTimer()
 	remainingItems := b.N
 	for i := 0; i < b.N; i += numItems {
@@ -148,45 +148,39 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		if remainingItems < numItems {
 			numItemsToUpload = remainingItems
 		}
-		stream1, err = uploadPowm4096(pMem, <-inputMem, numItemsToUpload, streamManager)
+		err = uploadPowm4096(pMem, <-inputMem, numItemsToUpload, workingStream)
 		if err != nil {
 			b.Fatal(err)
 		}
-		err = runPowm4096(stream1)
+		err = runPowm4096(workingStream)
 		if err != nil {
 			b.Fatal(err)
 		}
-		// Download items from the last stream after starting work in this stream
-		if stream2 != nil {
-			err := downloadPowm4096(stream2)
-			if err != nil {
-				b.Fatal(err)
-			}
+		// Download items from the other stream after starting work in this stream
+		err := downloadPowm4096(waitingStream)
+		if err != nil {
+			b.Fatal(err)
 		}
 		// Copy inputs from the stream before that (this is required for meaningful usage)
-		if stream3 != nil {
-			// The number of items isn't correct, but it shouldn't make a big difference to the benchmark.
-			_, err := getResultsPowm4096(stream3, numItems)
-			if err != nil {
-				b.Fatal(err)
-			}
+		// The number of items isn't always correct, but it shouldn't make a big difference to the benchmark.
+		_, err = getResultsPowm4096(waitingStream, numItems)
+		if err != nil {
+			b.Fatal(err)
 		}
-		// rotate streams
-		stream3 = stream2
-		stream2 = stream1
+		// Switch streams
+		workingStream, waitingStream = waitingStream, workingStream
 	}
 	// Download the last results
-	err = downloadPowm4096(stream2)
+	err = downloadPowm4096(waitingStream)
 	if err != nil {
 		b.Fatal(err)
 	}
-	_, err = getResultsPowm4096(stream2, numItems)
+	_, err = getResultsPowm4096(waitingStream, numItems)
 	if err != nil {
 		b.Fatal(err)
 	}
-	// FIXME The benchmark doesn't wait for downloads to finish! This makes the results INCORRECT (potentially?). Fix it
 	b.StopTimer()
-	err = destroyStreamManager(streamManager)
+	err = destroyStreams(streams)
 	if err != nil {
 		b.Fatal(err)
 	}
