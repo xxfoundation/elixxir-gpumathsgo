@@ -65,13 +65,16 @@ func createStreamsPowm4096(numStreams int, capacity int) ([]unsafe.Pointer, erro
 
 	for i := 0; i < numStreams; i++ {
 		createStreamResult := C.createStream(streamCreateInfo)
-		if createStreamResult.error != nil {
-			// TODO Clean up all streams when an error occurs
-			return nil, GoError(createStreamResult.error)
-		}
 		stream := createStreamResult.result
 		if stream != nil {
 			streams = append(streams, stream)
+		}
+		if createStreamResult.error != nil {
+			// Try to destroy all created streams to avoid leaking memory
+			for j := 0; j < len(streams); j++ {
+				C.destroyStream(streams[j])
+			}
+			return nil, GoError(createStreamResult.error)
 		}
 	}
 
