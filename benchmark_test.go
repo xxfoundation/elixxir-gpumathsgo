@@ -7,27 +7,40 @@ import (
 	"testing"
 )
 
-func generateBenchmarkInputMem(g *cyclic.Group, xNumBytes, yNumBytes, n int, byteSizePerBN uint64) []byte {
-	inputMem := make([]byte, 0, int(byteSizePerBN)*n*2)
-	xBuf := make([]byte, xNumBytes)
-	yBuf := make([]byte, yNumBytes)
-	rng := rand.New(rand.NewSource(8074))
-	for i := 0; i < n; i++ {
-		_, err := rng.Read(xBuf)
-		if err != nil {
-			panic(err)
+// This function creates a channel that returns chunks of memory
+// that are valid inputs for the exponentiation kernel.
+// Because the speed can depend on the number of non-zero bits,
+// the caller specifies the length and capacity of the numbers.
+func benchmarkInputMemGenerator(g *cyclic.Group, xNumBytes, yNumBytes, n int, byteSizePerBN uint64) chan []byte {
+	// New input mem is generated and put out on this channel
+	result := make(chan []byte)
+	go func() {
+		// Completely arbitrary seed to get a consistent set of input data for test running
+		seed := int64(8074)
+		rng := rand.New(rand.NewSource(seed))
+		for {
+			inputMem := make([]byte, 0, int(byteSizePerBN)*n*2)
+			xBuf := make([]byte, xNumBytes)
+			yBuf := make([]byte, yNumBytes)
+			for i := 0; i < n; i++ {
+				_, err := rng.Read(xBuf)
+				if err != nil {
+					panic(err)
+				}
+				x := g.NewIntFromBytes(xBuf)
+				inputMem = append(inputMem, x.CGBNMem(byteSizePerBN*8)...)
+				_, err = rng.Read(yBuf)
+				if err != nil {
+					panic(err)
+				}
+				g.NewIntFromBytes(yBuf)
+				y := g.NewIntFromBytes(yBuf)
+				inputMem = append(inputMem, y.CGBNMem(byteSizePerBN*8)...)
+			}
+			result <- inputMem
 		}
-		x := g.NewIntFromBytes(xBuf)
-		inputMem = append(inputMem, x.CGBNMem(byteSizePerBN*8)...)
-		_, err = rng.Read(yBuf)
-		if err != nil {
-			panic(err)
-		}
-		g.NewIntFromBytes(yBuf)
-		y := g.NewIntFromBytes(yBuf)
-		inputMem = append(inputMem, y.CGBNMem(byteSizePerBN*8)...)
-	}
-	return inputMem
+	}()
+	return result
 }
 
 func makeTestGroup4096() *cyclic.Group {
@@ -35,7 +48,6 @@ func makeTestGroup4096() *cyclic.Group {
 	return cyclic.NewGroup(
 		p,
 		large.NewInt(2),
-		large.NewInt(1),
 	)
 }
 
@@ -44,10 +56,9 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	const bitLen = 4096
 	const byteLen = bitLen / 8
 	g := makeTestGroup4096()
-	inputMem := generateBenchmarkInputMem(g, byteLen, byteLen, b.N, byteLen)
+	inputMem := benchmarkInputMemGenerator(g, byteLen, byteLen, b.N, byteLen)
 	pMem := g.GetP().CGBNMem(bitLen)
 
-	// Maybe don't load the library twice?
 	err := startProfiling()
 	if err != nil {
 		b.Fatal(err)
@@ -57,7 +68,7 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	// It might be possible to run another benchmark that does two or more
 	// chunks instead, which could be faster if the call could be made
 	// asynchronous (which should be possible)
-	results, err = powm_4096(pMem, inputMem, uint32(b.N))
+	results, err = powm4096(pMem, <-inputMem, b.N)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -84,10 +95,9 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
-	inputMem := generateBenchmarkInputMem(g, xByteLen, yByteLen, b.N, xByteLen)
+	inputMem := benchmarkInputMemGenerator(g, xByteLen, yByteLen, b.N, xByteLen)
 	pMem := g.GetP().CGBNMem(bitLen)
 
-	// Maybe don't load the library twice?
 	err := startProfiling()
 	if err != nil {
 		b.Fatal(err)
@@ -97,7 +107,7 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	// It might be possible to run another benchmark that does two or more
 	// chunks instead, which could be faster if the call could be made
 	// asynchronous (which should be possible)
-	results, err = powm_4096(pMem, inputMem, uint32(b.N))
+	results, err = powm4096(pMem, <-inputMem, b.N)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -105,6 +115,82 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	// This benchmark doesn't include converting resulting memory back to cyclic ints
 	b.Log(results[0])
 	// Write out any cached profiling data
+	err = stopProfiling()
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = resetDevice()
+	if err != nil {
+		b.Fatal(err)
+	}
+}
+
+func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
+	const xBitLen = 4096
+	const xByteLen = xBitLen / 8
+	const yBitLen = 256
+	const yByteLen = yBitLen / 8
+	g := makeTestGroup4096()
+	pMem := g.GetP().CGBNMem(bitLen)
+
+	// This benchmark is "cheating" compared to the last one by doing allocations before the timer's reset
+	// Use two streams with 2048 items per kernel launch
+	numItems := 32768
+	inputMem := benchmarkInputMemGenerator(g, xByteLen, yByteLen, numItems, xByteLen)
+
+	numStreams := 2
+	streams, err := createStreamsPowm4096(numStreams, numItems)
+	workingStream := streams[0]
+	waitingStream := streams[1]
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	remainingItems := b.N
+	for i := 0; i < b.N; i += numItems {
+		// If part of a chunk remains, only upload that part
+		remainingItems = b.N - i
+		numItemsToUpload := numItems
+		if remainingItems < numItems {
+			numItemsToUpload = remainingItems
+		}
+		err = uploadPowm4096(pMem, <-inputMem, numItemsToUpload, workingStream)
+		if err != nil {
+			b.Fatal(err)
+		}
+		err = runPowm4096(workingStream)
+		if err != nil {
+			b.Fatal(err)
+		}
+		// Download items from the other stream after starting work in this stream
+		err := downloadPowm4096(waitingStream)
+		if err != nil {
+			b.Fatal(err)
+		}
+		// Copy inputs from the stream before that (this is required for meaningful usage)
+		// The number of items isn't always correct, but it shouldn't make a big difference to the benchmark.
+		_, err = getResultsPowm4096(waitingStream, numItems)
+		if err != nil {
+			b.Fatal(err)
+		}
+		// Switch streams
+		workingStream, waitingStream = waitingStream, workingStream
+	}
+	// Download the last results
+	err = downloadPowm4096(waitingStream)
+	if err != nil {
+		b.Fatal(err)
+	}
+	_, err = getResultsPowm4096(waitingStream, numItems)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.StopTimer()
+	err = destroyStreams(streams)
+	if err != nil {
+		b.Fatal(err)
+	}
+
 	err = stopProfiling()
 	if err != nil {
 		b.Fatal(err)
