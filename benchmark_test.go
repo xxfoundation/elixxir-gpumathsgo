@@ -7,11 +7,17 @@ import (
 	"testing"
 )
 
+// This function creates a channel that returns chunks of memory
+// that are valid inputs for the exponentiation kernel.
+// Because the speed can depend on the number of non-zero bits,
+// the caller specifies the length and capacity of the numbers.
 func benchmarkInputMemGenerator(g *cyclic.Group, xNumBytes, yNumBytes, n int, byteSizePerBN uint64) chan []byte {
 	// New input mem is generated and put out on this channel
 	result := make(chan []byte)
 	go func() {
-		rng := rand.New(rand.NewSource(8074))
+		// Completely arbitrary seed to get a consistent set of input data for test running
+		seed := int64(8074)
+		rng := rand.New(rand.NewSource(seed))
 		for {
 			inputMem := make([]byte, 0, int(byteSizePerBN)*n*2)
 			xBuf := make([]byte, xNumBytes)
