@@ -96,7 +96,7 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
 	inputMem := benchmarkInputMemGenerator(g, xByteLen, yByteLen, b.N, xByteLen)
-	pMem := g.GetP().CGBNMem(bitLen)
+	pMem := g.GetP().CGBNMem(bnSizeBits)
 
 	err := startProfiling()
 	if err != nil {
@@ -131,7 +131,7 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
-	pMem := g.GetP().CGBNMem(bitLen)
+	pMem := g.GetP().CGBNMem(bnSizeBits)
 
 	// This benchmark is "cheating" compared to the last one by doing allocations before the timer's reset
 	// Use two streams with 2048 items per kernel launch
@@ -158,18 +158,18 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		err = runPowm4096(workingStream)
+		err = run(workingStream, kernelMul2)
 		if err != nil {
 			b.Fatal(err)
 		}
 		// Download items from the other stream after starting work in this stream
-		err := downloadPowm4096(waitingStream)
+		err := download(waitingStream)
 		if err != nil {
 			b.Fatal(err)
 		}
 		// Copy inputs from the stream before that (this is required for meaningful usage)
 		// The number of items isn't always correct, but it shouldn't make a big difference to the benchmark.
-		_, err = getResultsPowm4096(waitingStream, numItems)
+		_, err = getResults(waitingStream, numItems)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -177,11 +177,11 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		workingStream, waitingStream = waitingStream, workingStream
 	}
 	// Download the last results
-	err = downloadPowm4096(waitingStream)
+	err = download(waitingStream)
 	if err != nil {
 		b.Fatal(err)
 	}
-	_, err = getResultsPowm4096(waitingStream, numItems)
+	_, err = getResults(waitingStream, numItems)
 	if err != nil {
 		b.Fatal(err)
 	}
