@@ -158,7 +158,7 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		err = run(workingStream, kernelMul2)
+		err = run(workingStream, kernelPowmOdd)
 		if err != nil {
 			b.Fatal(err)
 		}

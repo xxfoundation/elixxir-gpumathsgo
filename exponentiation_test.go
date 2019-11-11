@@ -36,10 +36,11 @@ func TestPowm4096(t *testing.T) {
 	for inputStart, resultStart := 0, 0; inputStart < len(inputMem); inputStart, resultStart = inputStart+2*xByteLen, resultStart+xByteLen {
 		x := g.NewIntFromCGBN(inputMem[inputStart : inputStart+xByteLen])
 		y := g.NewIntFromCGBN(inputMem[inputStart+xByteLen : inputStart+2*xByteLen])
-		z := g.NewInt(2)
-		g.Exp(x, y, z)
-		if z.Cmp(g.NewIntFromCGBN(results[resultStart: resultStart + xByteLen])) != 0 {
-			t.Errorf("Go results didn't match CUDA results in slot %v", resultStart / xByteLen)
+		goResult := g.NewInt(2)
+		g.Exp(x, y, goResult)
+		cgbnResult := g.NewIntFromCGBN(results[resultStart:resultStart+xByteLen])
+		if goResult.Cmp(cgbnResult) != 0 {
+			t.Errorf("Go results (%+v) didn't match CUDA results (%+v) in slot %v", goResult.Text(16), cgbnResult.Text(16), resultStart / xByteLen)
 		}
 	}
 }
