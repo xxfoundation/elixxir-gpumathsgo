@@ -139,7 +139,7 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 	inputMem := benchmarkInputMemGenerator(g, xByteLen, yByteLen, numItems, xByteLen)
 
 	numStreams := 2
-	streams, err := createStreamsPowm4096(numStreams, numItems)
+	streams, err := createStreams(numStreams, numItems, kernelPowmOdd)
 	workingStream := streams[0]
 	waitingStream := streams[1]
 	if err != nil {
@@ -154,7 +154,7 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		if remainingItems < numItems {
 			numItemsToUpload = remainingItems
 		}
-		err = uploadPowm4096(pMem, <-inputMem, numItemsToUpload, workingStream)
+		err = upload(pMem, <-inputMem, numItemsToUpload, workingStream, kernelPowmOdd)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -169,7 +169,7 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		}
 		// Copy inputs from the stream before that (this is required for meaningful usage)
 		// The number of items isn't always correct, but it shouldn't make a big difference to the benchmark.
-		_, err = getResults(waitingStream, numItems)
+		_, err = getResults(waitingStream, numItems, kernelPowmOdd)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -181,7 +181,7 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	_, err = getResults(waitingStream, numItems)
+	_, err = getResults(waitingStream, numItems, kernelPowmOdd)
 	if err != nil {
 		b.Fatal(err)
 	}

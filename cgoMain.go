@@ -19,7 +19,7 @@ import (
 const (
 	kernelPowmOdd = C.KERNEL_POWM_ODD
 	kernelElgamal = C.KERNEL_ELGAMAL
-	kernelMul2 = C.KERNEL_MUL2
+	kernelMul2    = C.KERNEL_MUL2
 )
 
 // Load the shared library and return any errors
@@ -41,19 +41,43 @@ func prepare_powm_4096_inputs(x []*cyclic.Int, y []*cyclic.Int, inputMem []byte)
 	panic("Unimplemented")
 }
 
+// Should this take intbuffers and a range instead?
+// What values do some of these (the ones that become results) actually have? Are they just 1 most of the time?
+// Maybe a design that involves GPU is different enough from the CPU design which uses the same variable for input and output.
+// Could ecrKeys and cypher just be outputs?
+func stageElgamalInputs(privateKey []*cyclic.Int, key []*cyclic.Int, publicCypherKey []*cyclic.Int) ([]byte, error) {
+	if len(privateKey) != len(key) || len(privateKey) != len(publicCypherKey) {
+		return nil, errors.New("lengths of all input arrays must be equal")
+	}
+	inputMem := make([]byte, 0, getInputsSizeElgamal(len(privateKey)))
+	for i := 0; i < len(privateKey); i++ {
+		inputMem = append(inputMem, privateKey[i].CGBNMem(bnSizeBits)...)
+		inputMem = append(inputMem, key[i].CGBNMem(bnSizeBits)...)
+		inputMem = append(inputMem, publicCypherKey[i].CGBNMem(bnSizeBits)...)
+	}
+	return inputMem, nil
+}
+
+func stageElgamalConstants(group *cyclic.Group) []byte {
+	constantMem := make([]byte, 0, getConstantsSizeElgamal())
+	constantMem = append(constantMem, group.GetG().CGBNMem(bnSizeBits)...)
+	constantMem = append(constantMem, group.GetP().CGBNMem(bnSizeBits)...)
+	return constantMem
+}
+
 const (
-	bnSizeBits = 4096
-	bnSizeBytes = bnSizeBits/8
+	bnSizeBits  = 4096
+	bnSizeBytes = bnSizeBits / 8
 )
 
 // Two numbers per input
 func getInputsSizePowm4096(length int) int {
-	return bnSizeBytes*2*length
+	return bnSizeBytes * 2 * length
 }
 
 // One number per output
 func getOutputsSizePowm4096(length int) int {
-	return bnSizeBytes*length
+	return bnSizeBytes * length
 }
 
 // One number (prime)
@@ -61,17 +85,42 @@ func getConstantsSizePowm4096() int {
 	return bnSizeBytes
 }
 
+// Three numbers per input
+func getInputsSizeElgamal(length int) int {
+	return bnSizeBytes * 3 * length
+}
+
+// Two numbers per output
+func getOutputsSizeElgamal(length int) int {
+	return bnSizeBytes * 2 * length
+}
+
+// Two numbers (prime, g)
+func getConstantsSizeElgamal() int {
+	return bnSizeBytes * 2
+}
+
 // It would be nice to more easily pass the type of operation for creating the stream manager
 // Returns pointer representing the stream manager
 // If it's not magnificently inefficient, we could probably just create
 // streams once and just not worry about lifetimes for them
 // However, this will require having enough space for the inputs of all operations
-func createStreamsPowm4096(numStreams int, capacity int) ([]unsafe.Pointer, error) {
+func createStreams(numStreams int, capacity int, kernel int) ([]unsafe.Pointer, error) {
 	streamCreateInfo := C.struct_streamCreateInfo{
-		capacity:      (C.size_t)(capacity),
-		inputsCapacity:    (C.size_t)(getInputsSizePowm4096(capacity)),
-		outputsCapacity:   (C.size_t)(getOutputsSizePowm4096(capacity)),
-		constantsCapacity: (C.size_t)(getConstantsSizePowm4096()),
+		capacity: (C.size_t)(capacity),
+	}
+	// It might make more sense to create a stream with enough capacity to run all operations
+	switch kernel {
+	case kernelPowmOdd:
+		streamCreateInfo.inputsCapacity = (C.size_t)(getInputsSizePowm4096(capacity))
+		streamCreateInfo.outputsCapacity = (C.size_t)(getOutputsSizePowm4096(capacity))
+		streamCreateInfo.constantsCapacity = (C.size_t)(getConstantsSizePowm4096())
+	case kernelElgamal:
+		streamCreateInfo.inputsCapacity = (C.size_t)(getInputsSizeElgamal(capacity))
+		streamCreateInfo.outputsCapacity = (C.size_t)(getOutputsSizeElgamal(capacity))
+		streamCreateInfo.constantsCapacity = (C.size_t)(getConstantsSizeElgamal())
+	default:
+		return nil, errors.New("unexpected kernel, don't know required sizes")
 	}
 
 	streams := make([]unsafe.Pointer, 0, numStreams)
@@ -110,17 +159,28 @@ func destroyStreams(streams []unsafe.Pointer) error {
 
 // Upload some items to the next stream
 // Returns the stream that the data were uploaded to
-func uploadPowm4096(primeMem []byte, inputMem []byte, length int, stream unsafe.Pointer) error {
+// TODO Store the kernel enum for the upload in the stream
+//  That way you don't have to pass that info again for run
+//  There should be no scenario where the stream gets run for a different kernel than the upload
+func upload(constantsMem []byte, inputMem []byte, length int, stream unsafe.Pointer, kernel int) error {
 	// get pointers to pinned memory
 	inputs := C.getCpuInputs(stream)
 	constants := C.getCpuConstants(stream)
 	// copy to pinned memory
 	// I assume that a normal golang copy() call wouldn't work,
 	// because they aren't both slices
-	C.memcpy(inputs, (unsafe.Pointer)(&inputMem[0]), (C.size_t)(getInputsSizePowm4096(length)))
-	C.memcpy(constants, (unsafe.Pointer)(&primeMem[0]), (C.size_t)(getConstantsSizePowm4096()))
+	// TODO Bounds check this at least? The whole lengths situation isn't good
+	C.memcpy(inputs, (unsafe.Pointer)(&inputMem[0]), (C.size_t)(len(inputMem)))
+	C.memcpy(constants, (unsafe.Pointer)(&constantsMem[0]), (C.size_t)(len(constantsMem)))
 	// queue upload
-	uploadError := C.upload((C.uint)(length), stream, (C.size_t)(getInputsSizePowm4096(length)), (C.size_t)(getConstantsSizePowm4096()), (C.size_t)(getOutputsSizePowm4096(length)))
+	var outputSize int
+	switch kernel {
+	case kernelPowmOdd:
+		outputSize = getOutputsSizePowm4096(length)
+	case kernelElgamal:
+		outputSize = getOutputsSizeElgamal(length)
+	}
+	uploadError := C.upload((C.uint)(length), stream, (C.size_t)(len(inputMem)), (C.size_t)(len(constantsMem)), (C.size_t)(outputSize))
 	if uploadError != nil {
 		return GoError(uploadError)
 	} else {
@@ -142,19 +202,25 @@ func download(stream unsafe.Pointer) error {
 
 // Wait for this stream's download to finish and return a pointer to the results
 // This also checks the CGBN error report (presumably this is where things should be checked, if not now, then in the future, to see whether they're in the group or not. However this may not(?) be doable if everything is in Montgomery space.)
-func getResults(stream unsafe.Pointer, numOutputs int) ([]byte, error) {
+func getResults(stream unsafe.Pointer, numOutputs int, kernel int) ([]byte, error) {
 	result := C.getResults(stream)
 	// Only need to free the result, not the underlying pointers
 	// result.result is a long-lived pinned memory buffer, and it doesn't need to be freed
 	defer C.free(unsafe.Pointer(result))
-	resultBytes := C.GoBytes(result.result, (C.int)(getOutputsSizePowm4096(numOutputs)))
+	var resultBytes []byte
+	switch kernel {
+	case kernelPowmOdd:
+		resultBytes = C.GoBytes(result.result, (C.int)(getOutputsSizePowm4096(numOutputs)))
+	case kernelElgamal:
+		resultBytes = C.GoBytes(result.result, (C.int)(getOutputsSizeElgamal(numOutputs)))
+	}
 	resultError := GoError(result.error)
 	return resultBytes, resultError
 }
 
 // Deprecated. Use the decomposed methods instead
 func powm4096(primeMem []byte, inputMem []byte, length int) ([]byte, error) {
-	streams, err := createStreamsPowm4096(1, length)
+	streams, err := createStreams(1, length, kernelPowmOdd)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +231,7 @@ func powm4096(primeMem []byte, inputMem []byte, length int) ([]byte, error) {
 		}
 	}()
 	stream := streams[0]
-	err = uploadPowm4096(primeMem, inputMem, length, stream)
+	err = upload(primeMem, inputMem, length, stream, kernelPowmOdd)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +243,7 @@ func powm4096(primeMem []byte, inputMem []byte, length int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return getResults(stream, length)
+	return getResults(stream, length, kernelPowmOdd)
 }
 
 // Start GPU profiling
