@@ -1,6 +1,8 @@
 package main
 
 import (
+	"gitlab.com/elixxir/crypto/cryptops"
+	"gitlab.com/elixxir/crypto/cyclic"
 	"testing"
 )
 
@@ -36,10 +38,89 @@ func TestPowm4096(t *testing.T) {
 	for inputStart, resultStart := 0, 0; inputStart < len(inputMem); inputStart, resultStart = inputStart+2*xByteLen, resultStart+xByteLen {
 		x := g.NewIntFromCGBN(inputMem[inputStart : inputStart+xByteLen])
 		y := g.NewIntFromCGBN(inputMem[inputStart+xByteLen : inputStart+2*xByteLen])
-		z := g.NewInt(2)
-		g.Exp(x, y, z)
-		if z.Cmp(g.NewIntFromCGBN(results[resultStart: resultStart + xByteLen])) != 0 {
-			t.Errorf("Go results didn't match CUDA results in slot %v", resultStart / xByteLen)
+		goResult := g.NewInt(2)
+		g.Exp(x, y, goResult)
+		cgbnResult := g.NewIntFromCGBN(results[resultStart:resultStart+xByteLen])
+		if goResult.Cmp(cgbnResult) != 0 {
+			t.Errorf("Go results (%+v) didn't match CUDA results (%+v) in slot %v", goResult.Text(16), cgbnResult.Text(16), resultStart / xByteLen)
+		}
+	}
+}
+
+func TestElgamal4096(t *testing.T) {
+	const numSlots = 12
+	// Do computations with CUDA first
+	g := makeTestGroup4096()
+
+	// Build some random inputs for elgamal kernel
+	constantMem := stageElgamalConstants(g)
+	var (
+		publicCypherKey []*cyclic.Int
+		key []*cyclic.Int
+		privateKey []*cyclic.Int
+		ecrKeys []*cyclic.Int
+		cypher []*cyclic.Int
+	)
+	for i := 0; i < numSlots; i++ {
+		publicCypherKey = append(publicCypherKey, g.Random(g.NewInt(1)))
+		key = append(key, g.Random(g.NewInt(1)))
+		privateKey = append(privateKey, g.Random(g.NewInt(1)))
+	}
+	inputMem, err := stageElgamalInputs(privateKey, key, publicCypherKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run elgamal kernel
+	streams, err := createStreams(1, numSlots, kernelElgamal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := destroyStreams(streams)
+		if err != nil {
+			panic(err)
+		}
+	}()
+	stream := streams[0]
+	err = upload(constantMem, inputMem, numSlots, stream, kernelElgamal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = run(stream, kernelElgamal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = download(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := getResults(stream, numSlots, kernelElgamal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Turn results into cyclic ints
+	for len(results) > 0 {
+		ekb := results[:bnSizeBytes]
+		t.Logf("%x", ekb)
+		cb := results[bnSizeBytes:2*bnSizeBytes]
+		t.Logf("%x", cb)
+		ecrKeys = append(ecrKeys, g.NewIntFromCGBN(results[:bnSizeBytes]))
+		cypher = append(cypher, g.NewIntFromCGBN(results[bnSizeBytes:2*bnSizeBytes]))
+		results = results[2*bnSizeBytes:]
+	}
+
+	// Compare with results from elixxir/crypto implementation
+	for i := 0; i < len(ecrKeys); i++ {
+		cpuEcrKeys := g.NewInt(1)
+		cpuCypher := g.NewInt(1)
+		cryptops.ElGamal(g, key[i], privateKey[i], publicCypherKey[i], cpuEcrKeys, cpuCypher)
+		if cpuEcrKeys.Cmp(ecrKeys[i]) != 0 {
+			t.Errorf("ecrkeys didn't match cpu result at index %v", i)
+		}
+		if cpuCypher.Cmp(cypher[i]) != 0 {
+			t.Errorf("cypher didn't match cpu result at index %v", i)
 		}
 	}
 }
