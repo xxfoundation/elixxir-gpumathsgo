@@ -15,7 +15,12 @@ import (
 	"unsafe"
 )
 
-const bitLen = 4096
+// Package C enum in golang for testing, possible export?
+const (
+	kernelPowmOdd = C.KERNEL_POWM_ODD
+	kernelElgamal = C.KERNEL_ELGAMAL
+	kernelMul2 = C.KERNEL_MUL2
+)
 
 // Load the shared library and return any errors
 // Copies a C string into a Go error and frees the C string
@@ -36,16 +41,24 @@ func prepare_powm_4096_inputs(x []*cyclic.Int, y []*cyclic.Int, inputMem []byte)
 	panic("Unimplemented")
 }
 
+const (
+	bnSizeBits = 4096
+	bnSizeBytes = bnSizeBits/8
+)
+
+// Two numbers per input
 func getInputsSizePowm4096(length int) int {
-	return int(C.getInputsSize_powm4096((C.size_t)(length)))
+	return bnSizeBytes*2*length
 }
 
+// One number per output
 func getOutputsSizePowm4096(length int) int {
-	return int(C.getOutputsSize_powm4096((C.size_t)(length)))
+	return bnSizeBytes*length
 }
 
+// One number (prime)
 func getConstantsSizePowm4096() int {
-	return int(C.getConstantsSize_powm4096())
+	return bnSizeBytes
 }
 
 // It would be nice to more easily pass the type of operation for creating the stream manager
@@ -56,9 +69,9 @@ func getConstantsSizePowm4096() int {
 func createStreamsPowm4096(numStreams int, capacity int) ([]unsafe.Pointer, error) {
 	streamCreateInfo := C.struct_streamCreateInfo{
 		capacity:      (C.size_t)(capacity),
-		inputsSize:    (C.size_t)(getInputsSizePowm4096(capacity)),
-		outputsSize:   (C.size_t)(getOutputsSizePowm4096(capacity)),
-		constantsSize: (C.size_t)(getConstantsSizePowm4096()),
+		inputsCapacity:    (C.size_t)(getInputsSizePowm4096(capacity)),
+		outputsCapacity:   (C.size_t)(getOutputsSizePowm4096(capacity)),
+		constantsCapacity: (C.size_t)(getConstantsSizePowm4096()),
 	}
 
 	streams := make([]unsafe.Pointer, 0, numStreams)
@@ -107,7 +120,7 @@ func uploadPowm4096(primeMem []byte, inputMem []byte, length int, stream unsafe.
 	C.memcpy(inputs, (unsafe.Pointer)(&inputMem[0]), (C.size_t)(getInputsSizePowm4096(length)))
 	C.memcpy(constants, (unsafe.Pointer)(&primeMem[0]), (C.size_t)(getConstantsSizePowm4096()))
 	// queue upload
-	uploadError := C.upload_powm_4096((C.uint)(length), stream)
+	uploadError := C.upload((C.uint)(length), stream, (C.size_t)(getInputsSizePowm4096(length)), (C.size_t)(getConstantsSizePowm4096()), (C.size_t)(getOutputsSizePowm4096(length)))
 	if uploadError != nil {
 		return GoError(uploadError)
 	} else {
@@ -115,20 +128,22 @@ func uploadPowm4096(primeMem []byte, inputMem []byte, length int, stream unsafe.
 	}
 }
 
-func runPowm4096(stream unsafe.Pointer) error {
-	return GoError(C.run_powm_4096(stream))
+// Can you use the C type like this?
+// Might need to redefine enumeration in Golang
+func run(stream unsafe.Pointer, whichToRun C.enum_kernel) error {
+	return GoError(C.run(stream, whichToRun))
 }
 
 // Enqueue a download for this stream after execution finishes
 // Doesn't actually block for the download
-func downloadPowm4096(stream unsafe.Pointer) error {
-	return GoError(C.download_powm_4096(stream))
+func download(stream unsafe.Pointer) error {
+	return GoError(C.download(stream))
 }
 
 // Wait for this stream's download to finish and return a pointer to the results
 // This also checks the CGBN error report (presumably this is where things should be checked, if not now, then in the future, to see whether they're in the group or not. However this may not(?) be doable if everything is in Montgomery space.)
-func getResultsPowm4096(stream unsafe.Pointer, numOutputs int) ([]byte, error) {
-	result := C.getResults_powm(stream)
+func getResults(stream unsafe.Pointer, numOutputs int) ([]byte, error) {
+	result := C.getResults(stream)
 	// Only need to free the result, not the underlying pointers
 	// result.result is a long-lived pinned memory buffer, and it doesn't need to be freed
 	defer C.free(unsafe.Pointer(result))
@@ -154,15 +169,15 @@ func powm4096(primeMem []byte, inputMem []byte, length int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = runPowm4096(stream)
+	err = run(stream, C.KERNEL_POWM_ODD)
 	if err != nil {
 		return nil, err
 	}
-	err = downloadPowm4096(stream)
+	err = download(stream)
 	if err != nil {
 		return nil, err
 	}
-	return getResultsPowm4096(stream, length)
+	return getResults(stream, length)
 }
 
 // Start GPU profiling
@@ -198,20 +213,20 @@ func main() {
 	// x**y mod p
 	x := g.NewIntFromString("102698389601429893247415098320984", 10)
 	y := g.NewIntFromString("8891261048623689650221543816983486", 10)
-	pMem := g.GetP().CGBNMem(bitLen)
+	pMem := g.GetP().CGBNMem(bnSizeBits)
 	result := g.Exp(x, y, g.NewInt(2))
 	fmt.Printf("result in Go: %v\n", result.TextVerbose(16, 0))
 	// x**y mod p: x (4096 bits)
 	// For more than one X and Y, they would be appended in the list
 	var cgbnInputs []byte
-	cgbnInputs = append(cgbnInputs, x.CGBNMem(bitLen)...)
-	cgbnInputs = append(cgbnInputs, y.CGBNMem(bitLen)...)
+	cgbnInputs = append(cgbnInputs, x.CGBNMem(bnSizeBits)...)
+	cgbnInputs = append(cgbnInputs, y.CGBNMem(bnSizeBits)...)
 	inputsMem := cgbnInputs
 	resultBytes, err := powm4096(pMem, inputsMem, 1)
 	if err != nil {
 		panic(err)
 	}
-	resultInt := g.NewIntFromCGBN(resultBytes[:bitLen/8])
+	resultInt := g.NewIntFromCGBN(resultBytes[:bnSizeBytes])
 	fmt.Printf("result in Go from CUDA: %v\n", resultInt.TextVerbose(16, 0))
 	err = stopProfiling()
 	if err != nil {
