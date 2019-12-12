@@ -11,7 +11,7 @@ import (
 // that are valid inputs for the exponentiation kernel.
 // Because the speed can depend on the number of non-zero bits,
 // the caller specifies the length and capacity of the numbers.
-func benchmarkInputMemGenerator(g *cyclic.Group, xNumBytes, yNumBytes, n int, byteSizePerBN uint64) chan []byte {
+func benchmarkInputMemGenerator(g *cyclic.Group, n int, byteSizePerBN uint64, numBytes ...int) chan []byte {
 	// New input mem is generated and put out on this channel
 	result := make(chan []byte)
 	go func() {
@@ -20,22 +20,16 @@ func benchmarkInputMemGenerator(g *cyclic.Group, xNumBytes, yNumBytes, n int, by
 		rng := rand.New(rand.NewSource(seed))
 		for {
 			inputMem := make([]byte, 0, int(byteSizePerBN)*n*2)
-			xBuf := make([]byte, xNumBytes)
-			yBuf := make([]byte, yNumBytes)
 			for i := 0; i < n; i++ {
-				_, err := rng.Read(xBuf)
-				if err != nil {
-					panic(err)
+				for j := 0; j < len(numBytes); j++ {
+					buf := make([]byte, numBytes[j])
+					_, err := rng.Read(buf)
+					if err != nil {
+						panic(err)
+					}
+					input := g.NewIntFromBytes(buf)
+					inputMem = append(inputMem, input.CGBNMem(byteSizePerBN*8)...)
 				}
-				x := g.NewIntFromBytes(xBuf)
-				inputMem = append(inputMem, x.CGBNMem(byteSizePerBN*8)...)
-				_, err = rng.Read(yBuf)
-				if err != nil {
-					panic(err)
-				}
-				g.NewIntFromBytes(yBuf)
-				y := g.NewIntFromBytes(yBuf)
-				inputMem = append(inputMem, y.CGBNMem(byteSizePerBN*8)...)
 			}
 			result <- inputMem
 		}
@@ -56,7 +50,7 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	const bitLen = 4096
 	const byteLen = bitLen / 8
 	g := makeTestGroup4096()
-	inputMem := benchmarkInputMemGenerator(g, byteLen, byteLen, b.N, byteLen)
+	inputMem := benchmarkInputMemGenerator(g, b.N, byteLen, byteLen, byteLen)
 	pMem := g.GetP().CGBNMem(bitLen)
 
 	err := startProfiling()
@@ -95,7 +89,7 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
-	inputMem := benchmarkInputMemGenerator(g, xByteLen, yByteLen, b.N, xByteLen)
+	inputMem := benchmarkInputMemGenerator(g,  b.N, xByteLen, xByteLen, yByteLen)
 	pMem := g.GetP().CGBNMem(bnSizeBits)
 
 	err := startProfiling()
@@ -136,7 +130,7 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 	// This benchmark is "cheating" compared to the last one by doing allocations before the timer's reset
 	// Use two streams with 2048 items per kernel launch
 	numItems := 32768
-	inputMem := benchmarkInputMemGenerator(g, xByteLen, yByteLen, numItems, xByteLen)
+	inputMem := benchmarkInputMemGenerator(g,  numItems, xByteLen, xByteLen, yByteLen)
 
 	numStreams := 2
 	streams, err := createStreams(numStreams, numItems, kernelPowmOdd)
@@ -182,6 +176,87 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		b.Fatal(err)
 	}
 	_, err = getResults(waitingStream, numItems, kernelPowmOdd)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.StopTimer()
+	err = destroyStreams(streams)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	err = stopProfiling()
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = resetDevice()
+	if err != nil {
+		b.Fatal(err)
+	}
+}
+
+func BenchmarkElgamalCUDA4096_256_streams(b *testing.B) {
+	const longBitLen = 4096
+	const longByteLen = longBitLen / 8
+	const shortBitLen = 256
+	const shortByteLen = shortBitLen / 8
+	g := makeTestGroup4096()
+	// Start with a pseudorandom cypher public key
+	cpkBytes := make([]byte, longByteLen)
+	rand.Read(cpkBytes)
+	cpk := g.NewIntFromBytes(cpkBytes)
+	pMem := stageElgamalConstants(g, cpk)
+
+	// This benchmark is "cheating" compared to the last one by doing allocations before the timer's reset
+	// Use two streams with 2048 items per kernel launch
+	numItems := 32768
+	// the private key is the only input that can be assumed to be short
+	inputMem := benchmarkInputMemGenerator(g, numItems, longByteLen, shortByteLen, longByteLen, longByteLen, longByteLen)
+
+	numStreams := 2
+	streams, err := createStreams(numStreams, numItems, kernelElgamal)
+	workingStream := streams[0]
+	waitingStream := streams[1]
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	remainingItems := b.N
+	for i := 0; i < b.N; i += numItems {
+		// If part of a chunk remains, only upload that part
+		remainingItems = b.N - i
+		numItemsToUpload := numItems
+		if remainingItems < numItems {
+			numItemsToUpload = remainingItems
+		}
+		err = upload(pMem, <-inputMem, numItemsToUpload, workingStream, kernelElgamal)
+		if err != nil {
+			b.Fatal(err)
+		}
+		err = run(workingStream, kernelElgamal)
+		if err != nil {
+			b.Fatal(err)
+		}
+		// Download items from the other stream after starting work in this stream
+		err := download(waitingStream)
+		if err != nil {
+			b.Fatal(err)
+		}
+		// Copy inputs from the stream before that (this is required for meaningful usage)
+		// The number of items isn't always correct, but it shouldn't make a big difference to the benchmark.
+		_, err = getResults(waitingStream, numItems, kernelElgamal)
+		if err != nil {
+			b.Fatal(err)
+		}
+		// Switch streams
+		workingStream, waitingStream = waitingStream, workingStream
+	}
+	// Download the last results
+	err = download(waitingStream)
+	if err != nil {
+		b.Fatal(err)
+	}
+	_, err = getResults(waitingStream, numItems, kernelElgamal)
 	if err != nil {
 		b.Fatal(err)
 	}
