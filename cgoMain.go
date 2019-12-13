@@ -45,23 +45,25 @@ func prepare_powm_4096_inputs(x []*cyclic.Int, y []*cyclic.Int, inputMem []byte)
 // What values do some of these (the ones that become results) actually have? Are they just 1 most of the time?
 // Maybe a design that involves GPU is different enough from the CPU design which uses the same variable for input and output.
 // Could ecrKeys and cypher just be outputs?
-func stageElgamalInputs(privateKey []*cyclic.Int, key []*cyclic.Int, publicCypherKey []*cyclic.Int) ([]byte, error) {
-	if len(privateKey) != len(key) || len(privateKey) != len(publicCypherKey) {
+func stageElgamalInputs(privateKey, key, ecrKeys, cypher []*cyclic.Int) ([]byte, error) {
+	if len(privateKey) != len(key) || len(privateKey) != len(ecrKeys) || len(privateKey) != len(cypher) {
 		return nil, errors.New("lengths of all input arrays must be equal")
 	}
 	inputMem := make([]byte, 0, getInputsSizeElgamal(len(privateKey)))
 	for i := 0; i < len(privateKey); i++ {
 		inputMem = append(inputMem, privateKey[i].CGBNMem(bnSizeBits)...)
 		inputMem = append(inputMem, key[i].CGBNMem(bnSizeBits)...)
-		inputMem = append(inputMem, publicCypherKey[i].CGBNMem(bnSizeBits)...)
+		inputMem = append(inputMem, ecrKeys[i].CGBNMem(bnSizeBits)...)
+		inputMem = append(inputMem, cypher[i].CGBNMem(bnSizeBits)...)
 	}
 	return inputMem, nil
 }
 
-func stageElgamalConstants(group *cyclic.Group) []byte {
+func stageElgamalConstants(group *cyclic.Group, publicCypherKey *cyclic.Int) []byte {
 	constantMem := make([]byte, 0, getConstantsSizeElgamal())
 	constantMem = append(constantMem, group.GetG().CGBNMem(bnSizeBits)...)
 	constantMem = append(constantMem, group.GetP().CGBNMem(bnSizeBits)...)
+	constantMem = append(constantMem, publicCypherKey.CGBNMem(bnSizeBits)...)
 	return constantMem
 }
 
@@ -85,9 +87,9 @@ func getConstantsSizePowm4096() int {
 	return bnSizeBytes
 }
 
-// Three numbers per input
+// Four numbers per input
 func getInputsSizeElgamal(length int) int {
-	return bnSizeBytes * 3 * length
+	return bnSizeBytes * 4 * length
 }
 
 // Two numbers per output
@@ -95,9 +97,9 @@ func getOutputsSizeElgamal(length int) int {
 	return bnSizeBytes * 2 * length
 }
 
-// Two numbers (prime, g)
+// Three numbers (g, prime, publicCypherKey)
 func getConstantsSizeElgamal() int {
-	return bnSizeBytes * 2
+	return bnSizeBytes * 3
 }
 
 // It would be nice to more easily pass the type of operation for creating the stream manager

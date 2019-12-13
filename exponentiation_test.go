@@ -53,20 +53,22 @@ func TestElgamal4096(t *testing.T) {
 	g := makeTestGroup4096()
 
 	// Build some random inputs for elgamal kernel
-	constantMem := stageElgamalConstants(g)
 	var (
-		publicCypherKey []*cyclic.Int
+		publicCypherKey *cyclic.Int
 		key []*cyclic.Int
 		privateKey []*cyclic.Int
 		ecrKeys []*cyclic.Int
 		cypher []*cyclic.Int
 	)
+	publicCypherKey = g.Random(g.NewInt(1))
+	constantMem := stageElgamalConstants(g, publicCypherKey)
 	for i := 0; i < numSlots; i++ {
-		publicCypherKey = append(publicCypherKey, g.Random(g.NewInt(1)))
-		key = append(key, g.Random(g.NewInt(1)))
 		privateKey = append(privateKey, g.Random(g.NewInt(1)))
+		key = append(key, g.Random(g.NewInt(1)))
+		ecrKeys = append(ecrKeys, g.NewInt(1))
+		cypher = append(cypher, g.NewInt(1))
 	}
-	inputMem, err := stageElgamalInputs(privateKey, key, publicCypherKey)
+	inputMem, err := stageElgamalInputs(privateKey, key, ecrKeys, cypher)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,13 +103,13 @@ func TestElgamal4096(t *testing.T) {
 	}
 
 	// Turn results into cyclic ints
+	var (
+		ecrKeysResults []*cyclic.Int
+		cypherResults []*cyclic.Int
+	)
 	for len(results) > 0 {
-		ekb := results[:bnSizeBytes]
-		t.Logf("%x", ekb)
-		cb := results[bnSizeBytes:2*bnSizeBytes]
-		t.Logf("%x", cb)
-		ecrKeys = append(ecrKeys, g.NewIntFromCGBN(results[:bnSizeBytes]))
-		cypher = append(cypher, g.NewIntFromCGBN(results[bnSizeBytes:2*bnSizeBytes]))
+		ecrKeysResults = append(ecrKeysResults, g.NewIntFromCGBN(results[:bnSizeBytes]))
+		cypherResults = append(cypherResults, g.NewIntFromCGBN(results[bnSizeBytes:2*bnSizeBytes]))
 		results = results[2*bnSizeBytes:]
 	}
 
@@ -115,11 +117,11 @@ func TestElgamal4096(t *testing.T) {
 	for i := 0; i < len(ecrKeys); i++ {
 		cpuEcrKeys := g.NewInt(1)
 		cpuCypher := g.NewInt(1)
-		cryptops.ElGamal(g, key[i], privateKey[i], publicCypherKey[i], cpuEcrKeys, cpuCypher)
-		if cpuEcrKeys.Cmp(ecrKeys[i]) != 0 {
+		cryptops.ElGamal(g, key[i], privateKey[i], publicCypherKey, cpuEcrKeys, cpuCypher)
+		if cpuEcrKeys.Cmp(ecrKeysResults[i]) != 0 {
 			t.Errorf("ecrkeys didn't match cpu result at index %v", i)
 		}
-		if cpuCypher.Cmp(cypher[i]) != 0 {
+		if cpuCypher.Cmp(cypherResults[i]) != 0 {
 			t.Errorf("cypher didn't match cpu result at index %v", i)
 		}
 	}
