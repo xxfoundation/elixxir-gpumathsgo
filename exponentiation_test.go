@@ -15,7 +15,7 @@ func TestPowm4096(t *testing.T) {
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
-	inputMemGenerator := benchmarkInputMemGenerator(g, xByteLen, yByteLen, numSlots, xByteLen)
+	inputMemGenerator := benchmarkInputMemGenerator(g, numSlots, xByteLen, xByteLen, yByteLen)
 	pMem := g.GetP().CGBNMem(bnSizeBits)
 
 	inputMem := <-inputMemGenerator
