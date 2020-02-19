@@ -1,8 +1,8 @@
-package main
+package gpumaths
 
 import (
 	"gitlab.com/elixxir/crypto/cryptops"
-	"gitlab.com/elixxir/crypto/cyclic"
+	"gitlab.com/elixxir/crypto/large"
 	"testing"
 )
 
@@ -10,40 +10,53 @@ import (
 func TestPowm4096(t *testing.T) {
 	numSlots := 128
 	// Do computations with CUDA first
-	const xBitLen = 4096
-	const xByteLen = xBitLen / 8
-	const yBitLen = 256
-	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
-	inputMemGenerator := benchmarkInputMemGenerator(g, numSlots, xByteLen, xByteLen, yByteLen)
-	pMem := g.GetP().CGBNMem(bnSizeBits)
 
-	inputMem := <-inputMemGenerator
+	input := ExpInput{
+		Slots:   make([]ExpInputSlot, numSlots),
+		Modulus: g.GetPBytes(),
+	}
 
-	// We'll run the exponentiation for the whole array in one chunk
-	// It might be possible to run another benchmark that does two or more
-	// chunks instead, which could be faster if the call could be made
-	// asynchronous (which should be possible)
-	results, err := powm4096(pMem, inputMem, numSlots)
+	for i := 0; i < numSlots; i++ {
+		input.Slots[i] = ExpInputSlot{
+			Base:     g.Random(g.NewInt(1)).Bytes(),
+			// Only use 256 bits of the exponent
+			Exponent: g.Random(g.NewInt(1)).Bytes()[480:],
+		}
+	}
+
+	streamPool, err := NewStreamPool(1, streamSizeContaining(numSlots, kernelPowmOdd))
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = resetDevice()
-	if err != nil {
-		t.Fatal(err)
+	stream := streamPool.TakeStream()
+	resultChan := Exp(input, stream)
+	result := <-resultChan
+	if result.Err != nil {
+		t.Fatal(result.Err)
 	}
+	streamPool.ReturnStream(stream)
 
 	// Compare to results from the Golang library
 	// z = x**y mod p
-	for inputStart, resultStart := 0, 0; inputStart < len(inputMem); inputStart, resultStart = inputStart+2*xByteLen, resultStart+xByteLen {
-		x := g.NewIntFromCGBN(inputMem[inputStart : inputStart+xByteLen])
-		y := g.NewIntFromCGBN(inputMem[inputStart+xByteLen : inputStart+2*xByteLen])
+	for i := 0; i < numSlots; i++ {
+		x := g.NewIntFromBytes(input.Slots[i].Base)
+		y := g.NewIntFromBytes(input.Slots[i].Exponent)
 		goResult := g.NewInt(2)
 		g.Exp(x, y, goResult)
-		cgbnResult := g.NewIntFromCGBN(results[resultStart:resultStart+xByteLen])
+		cgbnResult := g.NewIntFromBytes(result.Results[i])
 		if goResult.Cmp(cgbnResult) != 0 {
-			t.Errorf("Go results (%+v) didn't match CUDA results (%+v) in slot %v", goResult.Text(16), cgbnResult.Text(16), resultStart / xByteLen)
+			t.Errorf("Go results (%+v) didn't match CUDA results (%+v) in slot %v", goResult.Text(16), cgbnResult.Text(16), i)
 		}
+	}
+	err = streamPool.Destroy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// flush system profiling data, just in case
+	err = resetDevice()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -53,76 +66,80 @@ func TestElgamal4096(t *testing.T) {
 	g := makeTestGroup4096()
 
 	// Build some random inputs for elgamal kernel
-	var (
-		publicCypherKey *cyclic.Int
-		key []*cyclic.Int
-		privateKey []*cyclic.Int
-		ecrKeys []*cyclic.Int
-		cypher []*cyclic.Int
-	)
-	publicCypherKey = g.Random(g.NewInt(1))
-	constantMem := stageElgamalConstants(g, publicCypherKey)
-	for i := 0; i < numSlots; i++ {
-		privateKey = append(privateKey, g.Random(g.NewInt(1)))
-		key = append(key, g.Random(g.NewInt(1)))
-		ecrKeys = append(ecrKeys, g.NewInt(1))
-		cypher = append(cypher, g.NewInt(1))
+	input := ElGamalInput{
+		Slots:           make([]ElGamalInputSlot, numSlots),
+		PublicCypherKey: g.Random(g.NewInt(1)).Bytes(),
+		Prime:           g.GetP().Bytes(),
+		G:               g.GetG().Bytes(),
 	}
-	inputMem, err := stageElgamalInputs(privateKey, key, ecrKeys, cypher)
-	if err != nil {
-		t.Fatal(err)
+	for i := 0; i < numSlots; i++ {
+		input.Slots[i] = ElGamalInputSlot{
+			PrivateKey: g.Random(g.NewInt(1)).Bytes(),
+			Key:        g.Random(g.NewInt(1)).Bytes(),
+			EcrKey:     g.NewInt(1).Bytes(),
+			Cypher:     g.NewInt(1).Bytes(),
+		}
 	}
 
 	// Run elgamal kernel
-	streams, err := createStreams(1, numSlots, kernelElgamal)
+	streamPool, err := NewStreamPool(1, streamSizeContaining(numSlots, kernelElgamal))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		err := destroyStreams(streams)
-		if err != nil {
-			panic(err)
-		}
-	}()
-	stream := streams[0]
-	err = upload(constantMem, inputMem, numSlots, stream, kernelElgamal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = run(stream, kernelElgamal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = download(stream)
-	if err != nil {
-		t.Fatal(err)
-	}
-	results, err := getResults(stream, numSlots, kernelElgamal)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Turn results into cyclic ints
-	var (
-		ecrKeysResults []*cyclic.Int
-		cypherResults []*cyclic.Int
-	)
-	for len(results) > 0 {
-		ecrKeysResults = append(ecrKeysResults, g.NewIntFromCGBN(results[:bnSizeBytes]))
-		cypherResults = append(cypherResults, g.NewIntFromCGBN(results[bnSizeBytes:2*bnSizeBytes]))
-		results = results[2*bnSizeBytes:]
+	stream := streamPool.TakeStream()
+	// I think I want to actually pass a stream to ElGamal...
+	// Is that too explicit/weird?
+	resultChan := ElGamal(input, stream)
+	result := <-resultChan
+	if result.Err != nil {
+		t.Error(result.Err)
 	}
 
 	// Compare with results from elixxir/crypto implementation
-	for i := 0; i < len(ecrKeys); i++ {
+	for i := 0; i < numSlots; i++ {
 		cpuEcrKeys := g.NewInt(1)
 		cpuCypher := g.NewInt(1)
-		cryptops.ElGamal(g, key[i], privateKey[i], publicCypherKey, cpuEcrKeys, cpuCypher)
-		if cpuEcrKeys.Cmp(ecrKeysResults[i]) != 0 {
+		cryptops.ElGamal(g, g.NewIntFromBytes(input.Slots[i].Key), g.NewIntFromBytes(input.Slots[i].PrivateKey),
+			g.NewIntFromBytes(input.PublicCypherKey), cpuEcrKeys, cpuCypher)
+		if cpuEcrKeys.Cmp(g.NewIntFromBytes(result.Slots[i].EcrKey)) != 0 {
 			t.Errorf("ecrkeys didn't match cpu result at index %v", i)
 		}
-		if cpuCypher.Cmp(cypherResults[i]) != 0 {
+		if cpuCypher.Cmp(g.NewIntFromBytes(result.Slots[i].Cypher)) != 0 {
 			t.Errorf("cypher didn't match cpu result at index %v", i)
 		}
+	}
+	streamPool.ReturnStream(stream)
+	err = streamPool.Destroy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// flush system profiling data, just in case
+	err = resetDevice()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPutInt(t *testing.T) {
+	a := []byte{1, 2, 3, 4, 5}
+	b := make([]byte, len(a))
+	putInt(b, a, len(a))
+	t.Logf("%+v\n", b)
+
+	// PutInt also needs to work correctly if the src int is short (consequence of Bytes() function being shorter if the int is shorter)
+	//  In this case it should overwrite the rest with zeroes
+	//  So, a straight-up reverse and copy is a no-go
+	// Two loops > branching
+	c := []byte{1, 2, 3}
+	d := make([]byte, len(a)+5)
+	// Convert to cgbn
+	putInt(d, c, len(d))
+	t.Logf("%+v\n", d)
+	// Convert to normal bytes
+	e := make([]byte, len(d))
+	putInt(e, d, len(d))
+	t.Logf("%+v\n", e)
+	if large.NewIntFromBytes(c).Cmp(large.NewIntFromBytes(e)) != 0 {
+		t.Error("short int not preserved by importing/exporting")
 	}
 }
