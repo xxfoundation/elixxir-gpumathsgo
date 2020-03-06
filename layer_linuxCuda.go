@@ -1,11 +1,10 @@
+//+build linux,cuda
+
 package gpumaths
 
 import (
 	"gitlab.com/elixxir/crypto/cyclic"
 )
-
-// Implement cryptop interface for ExpChunk
-type ExpChunkPrototype func(p *StreamPool, g *cyclic.Group, x, y, z *cyclic.IntBuffer) (*cyclic.IntBuffer, error)
 
 // Using this function doesn't allow you to do other things while waiting on the kernel to finish
 // Perform exponentiation for two operands and place the result in z (which is also returned)
@@ -26,11 +25,11 @@ var ExpChunk ExpChunkPrototype = func(p *StreamPool, g *cyclic.Group, x, y, z *c
 	// Run kernel on the inputs, simply using smaller chunks if passed chunk size exceeds buffer space in stream
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	for i := 0; i < numSlots; i += stream.MaxSlotsExp {
+	for i := 0; i < numSlots; i += stream.maxSlotsExp {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
-		if i+stream.MaxSlotsExp <= numSlots {
-			sliceEnd += stream.MaxSlotsExp
+		if i+stream.maxSlotsExp <= numSlots {
+			sliceEnd += stream.maxSlotsExp
 		} else {
 			sliceEnd = numSlots
 		}
@@ -51,18 +50,6 @@ var ExpChunk ExpChunkPrototype = func(p *StreamPool, g *cyclic.Group, x, y, z *c
 	// If there were no errors, we return z
 	return z, nil
 }
-
-func (ExpChunkPrototype) GetName() string {
-	return "ExpChunk"
-}
-
-// 1 for now, experiment later - will partial chunks still be ok if this is higher? is it possible to drive this from the stream size? or does this do something i'm not expecting and can't reason about?
-func (ExpChunkPrototype) GetInputSize() uint32 {
-	return 256
-}
-
-// Type necessary to implement cryptop interface
-type ElGamalChunkPrototype func(p *StreamPool, g *cyclic.Group, key, privateKey *cyclic.IntBuffer, publicCypherKey *cyclic.Int, ecrKey, cypher *cyclic.IntBuffer) error
 
 // Precondition: All int buffers must have the same length
 // Perform the ElGamal operation on two int buffers
@@ -87,11 +74,11 @@ var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group, ke
 	// Run kernel on the inputs
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	for i := 0; i < numSlots; i += stream.MaxSlotsElGamal {
+	for i := 0; i < numSlots; i += stream.maxSlotsElGamal {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
-		if i+stream.MaxSlotsElGamal <= numSlots {
-			sliceEnd += stream.MaxSlotsElGamal
+		if i+stream.maxSlotsElGamal <= numSlots {
+			sliceEnd += stream.maxSlotsElGamal
 		} else {
 			sliceEnd = numSlots
 		}
@@ -113,12 +100,4 @@ var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group, ke
 	}
 
 	return nil
-}
-
-func (ElGamalChunkPrototype) GetInputSize() uint32 {
-	return 128
-}
-
-func (ElGamalChunkPrototype) GetName() string {
-	return "ElGamalChunk"
 }

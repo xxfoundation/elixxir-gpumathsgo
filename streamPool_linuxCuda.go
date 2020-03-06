@@ -1,3 +1,5 @@
+//+build linux,cuda
+
 package gpumaths
 
 import "unsafe"
@@ -5,9 +7,17 @@ import "unsafe"
 // TODO Functions that currently take a stream as unsafe.Pointer should instead have a stream as the receiver
 type Stream struct {
 	// Pointer to stream and associated data, usable only on the C side
-	s unsafe.Pointer
-	MaxSlotsElGamal int
-	MaxSlotsExp int
+	s               unsafe.Pointer
+	maxSlotsElGamal int
+	maxSlotsExp     int
+}
+
+func (s *Stream) GetMaxSlotsElGamal() int {
+	return s.maxSlotsElGamal
+}
+
+func (s *Stream) GetMaxSlotsExp() int {
+	return s.maxSlotsExp
 }
 
 // Optional improvements:
@@ -77,9 +87,9 @@ func MaxSlots(memSize int, op int) int {
 func streamSizeContaining(numItems int, kernel int) int {
 	switch kernel {
 	case kernelPowmOdd:
-		return getInputsSizePowm4096() * numItems + getOutputsSizePowm4096() * numItems + getConstantsSizePowm4096()
+		return getInputsSizePowm4096()*numItems + getOutputsSizePowm4096()*numItems + getConstantsSizePowm4096()
 	case kernelElgamal:
-		return getInputsSizeElgamal() * numItems + getOutputsSizeElgamal() * numItems + getConstantsSizeElgamal()
+		return getInputsSizeElgamal()*numItems + getOutputsSizeElgamal()*numItems + getConstantsSizeElgamal()
 	}
 	return 0
 }

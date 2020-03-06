@@ -1,3 +1,5 @@
+//+build linux,cuda
+
 package gpumaths
 
 /*#cgo LDFLAGS: -Llib -lpowmosm75 -Wl,-rpath -Wl,./lib
@@ -15,32 +17,6 @@ const (
 	bnLength = 4096
 	bnLengthBytes = bnLength/8
 )
-
-type ElGamalInputSlot struct {
-	PrivateKey []byte
-	Key        []byte
-	EcrKey     []byte
-	Cypher     []byte
-}
-
-// All [][]byte must have the same number of items in them
-// All numbers will be imported - num.Bytes() output OK
-type ElGamalInput struct {
-	Slots           []ElGamalInputSlot
-	PublicCypherKey []byte
-	Prime           []byte
-	G               []byte
-}
-
-type ElGamalResultSlot struct {
-	EcrKey []byte
-	Cypher []byte
-}
-
-type ElGamalResult struct {
-	Slots []ElGamalResultSlot
-	Err   error
-}
 
 // publicCypherKey and prime should be byte slices obtained by running .Bytes() on the large int
 // The resulting byte slice should be trimmed and should be less than or equal to the length of
@@ -128,23 +104,6 @@ func ElGamal(input ElGamalInput, stream Stream) chan ElGamalResult {
 	return resultChan
 }
 
-type ExpInputSlot struct {
-	Base     []byte
-	Exponent []byte
-}
-
-// All [][]byte must have the same number of items in them
-// All numbers will be imported - num.Bytes() output OK
-type ExpInput struct {
-	Slots []ExpInputSlot
-	Modulus []byte
-}
-
-type ExpResult struct {
-	Results [][]byte
-	Err   error
-}
-
 // Precondition: Modulus must be odd
 func Exp(input ExpInput, stream Stream) chan ExpResult {
 	// Return the result later, when the GPU job finishes
@@ -218,16 +177,16 @@ func Exp(input ExpInput, stream Stream) chan ExpResult {
 
 // Bounds check to make sure that the stream can take all the inputs
 func validateElgamalInput(input ElGamalInput, stream Stream) {
-	if len(input.Slots) > stream.MaxSlotsElGamal {
+	if len(input.Slots) > stream.maxSlotsElGamal {
 		// This can only happen because of user error (unlike Cuda problems), so panic to make the error apparent
-		log.Panicf(fmt.Sprintf("%v slots is more than this stream's max of %v for ElGamal kernel", len(input.Slots), stream.MaxSlotsElGamal))
+		log.Panicf(fmt.Sprintf("%v slots is more than this stream's max of %v for ElGamal kernel", len(input.Slots), stream.maxSlotsElGamal))
 	}
 }
 
 // Checks if there's a number of exp slots that the stream can handle
 func validateExpInput(input ExpInput, stream Stream) {
-	if len(input.Slots) > stream.MaxSlotsExp {
-		log.Panicf(fmt.Sprintf("%v slots is more than this stream's max of %v for Exp kernel", len(input.Slots), stream.MaxSlotsExp))
+	if len(input.Slots) > stream.maxSlotsExp {
+		log.Panicf(fmt.Sprintf("%v slots is more than this stream's max of %v for Exp kernel", len(input.Slots), stream.maxSlotsExp))
 	}
 }
 

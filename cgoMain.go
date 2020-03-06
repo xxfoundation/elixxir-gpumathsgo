@@ -1,3 +1,5 @@
+//+build linux,cuda
+
 package gpumaths
 
 // When the gpumaths library itself is under development, it should
@@ -30,7 +32,7 @@ const (
 
 // Load the shared library and return any errors
 // Copies a C string into a Go error and frees the C string
-func GoError(cString *C.char) error {
+func goError(cString *C.char) error {
 	if cString != nil {
 		errorStringGo := C.GoString(cString)
 		err := errors.New(errorStringGo)
@@ -102,15 +104,15 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 			for j := 0; j < len(streams); j++ {
 				C.destroyStream(streams[j].s)
 			}
-			return nil, GoError(createStreamResult.error)
+			return nil, goError(createStreamResult.error)
 		}
 	}
 
 	maxSlotsElGamal := MaxSlots(capacity, kernelElgamal)
 	maxSlotsExp := MaxSlots(capacity, kernelPowmOdd)
 	for i := 0; i < numStreams; i++ {
-		streams[i].MaxSlotsElGamal = maxSlotsElGamal
-		streams[i].MaxSlotsExp = maxSlotsExp
+		streams[i].maxSlotsElGamal = maxSlotsElGamal
+		streams[i].maxSlotsExp = maxSlotsExp
 	}
 
 	return streams, nil
@@ -120,7 +122,7 @@ func destroyStreams(streams []Stream) error {
 	for i := 0; i < len(streams); i++ {
 		err := C.destroyStream(streams[i].s)
 		if err != nil {
-			return GoError(err)
+			return goError(err)
 		}
 	}
 	return nil
@@ -138,7 +140,7 @@ func destroyStreams(streams []Stream) error {
 func put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
 	uploadError := C.upload(C.uint(numSlots), stream.s, whichToRun)
 	if uploadError != nil {
-		return GoError(uploadError)
+		return goError(uploadError)
 	} else {
 		return nil
 	}
@@ -147,13 +149,13 @@ func put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
 // Can you use the C type like this?
 // Might need to redefine enumeration in Golang
 func run(stream Stream) error {
-	return GoError(C.run(stream.s))
+	return goError(C.run(stream.s))
 }
 
 // Enqueue a download for this stream after execution finishes
 // Doesn't actually block for the download
 func download(stream Stream) error {
-	return GoError(C.download(stream.s))
+	return goError(C.download(stream.s))
 }
 
 // Wait for this stream's download to finish and return a pointer to the results
@@ -163,14 +165,14 @@ func download(stream Stream) error {
 //  the results buffer directly. The length of the results buffer could be another
 //  field of the struct as well, although it would be better to allocate that earlier.
 func get(stream Stream) error {
-	return GoError(C.getResults(stream.s))
+	return goError(C.getResults(stream.s))
 }
 
 // Reset the CUDA device
 // Hopefully this will allow the CUDA profile to be gotten in the graphical profiler
 func resetDevice() error {
 	errString := C.resetDevice()
-	err := GoError(errString)
+	err := goError(errString)
 	return err
 }
 
