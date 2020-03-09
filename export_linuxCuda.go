@@ -2,8 +2,9 @@
 
 package gpumaths
 
-/*#cgo LDFLAGS: -Llib -lpowmosm75 -Wl,-rpath -Wl,./lib
-#include "cgbnBindings/powm/powm_odd_export.h"
+/*#cgo LDFLAGS: -Llib -lpowmosm75 -Wl,-rpath -Wl,./lib:/opt/elixxir/lib
+#cgo CFLAGS: -I./cgbnBindings/powm -I/opt/elixxir/include
+#include <powm_odd_export.h>
 */
 import "C"
 import (
