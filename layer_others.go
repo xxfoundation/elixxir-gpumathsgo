@@ -7,6 +7,9 @@ import (
 	"gitlab.com/elixxir/crypto/cyclic"
 )
 
+// NoGpuErrStr is the error returned when the gpu is not supported inthe build.
+const NoGpuErrStr = "gpumaths stubbed build doesn't support CUDA stream pool"
+
 // Using this function doesn't allow you to do other things while waiting on the kernel to finish
 // Perform exponentiation for two operands and place the result in z (which is also returned)
 var ExpChunk ExpChunkPrototype = func(p *StreamPool, g *cyclic.Group, x, y, z *cyclic.IntBuffer) (*cyclic.IntBuffer, error) {
@@ -18,4 +21,3 @@ var ExpChunk ExpChunkPrototype = func(p *StreamPool, g *cyclic.Group, x, y, z *c
 var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group, key, privateKey *cyclic.IntBuffer, publicCypherKey *cyclic.Int, ecrKey, cypher *cyclic.IntBuffer) error {
 	return errors.New("gpumaths stubbed build doesn't support CUDA stream pool")
 }
-

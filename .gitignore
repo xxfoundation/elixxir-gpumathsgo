@@ -6,3 +6,20 @@ gpumaths*
 .cproject
 .project
 .settings
+*~
+# Ignore vendor files/folders
+vendor/
+# Ignore Jetbrains IDE folder
+.idea/*
+# Ignore vim .swp buffers for open files
+.*.swp
+.*.swo
+# Ignore logs
+*.log
+# Ignore generated version file
+cmd/version_vars.go
+*.out
+# Ignore obsolete dependency management software
+glide.lock
+# Ignore emacs #...# files
+\#*\#
