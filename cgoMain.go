@@ -111,10 +111,12 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 	maxSlotsElGamal := MaxSlots(capacity, kernelElgamal)
 	maxSlotsExp := MaxSlots(capacity, kernelPowmOdd)
 	maxSlotsReveal := MaxSlots(capacity, kernelReveal)
+	maxSlotsStrip := MaxSlots(capacity, kernelStrip)
 	for i := 0; i < numStreams; i++ {
 		streams[i].maxSlotsElGamal = maxSlotsElGamal
 		streams[i].maxSlotsExp = maxSlotsExp
 		streams[i].maxSlotsReveal = maxSlotsReveal
+		streams[i].maxSlotsStrip = maxSlotsStrip
 	}
 
 	return streams, nil

@@ -20,53 +20,56 @@ import (
 	"log"
 )
 
-// reveal_gpu.go contains the CUDA ops for the Reveal operation. Reveal(...)
-// performs the actual call into the library and RevealChunk implements
+// strip_gpu.go contains the CUDA ops for the Strip operation. Strip(...)
+// performs the actual call into the library and StripChunk implements
 // the streaming interface function called by the server implementation.
 
-const kernelReveal = C.KERNEL_REVEAL
+const kernelStrip = C.KERNEL_STRIP
 
-// RevealChunk performs the Reveal operation on the cypher payloads
+// StripChunk performs the Strip operation on the cypher and precomputation
+// payloads
 // Precondition: All int buffers must have the same length
-var RevealChunk RevealChunkPrototype = func(p *StreamPool, g *cyclic.Group,
-	publicCypherKey *cyclic.Int, cypher *cyclic.IntBuffer) error {
-	// Populate Reveal inputs
+var StripChunk StripChunkPrototype = func(p *StreamPool, g *cyclic.Group,
+	publicCypherKey *cyclic.Int,
+	precomputation, cypher *cyclic.IntBuffer) error {
+	// Populate Strip inputs
 	numSlots := cypher.Len()
-	input := RevealInput{
-		Slots:           make([]RevealInputSlot, numSlots),
+	input := StripInput{
+		Slots:           make([]StripInputSlot, numSlots),
 		PublicCypherKey: publicCypherKey.Bytes(),
 		Prime:           g.GetPBytes(),
 	}
 	for i := uint32(0); i < uint32(numSlots); i++ {
-		input.Slots[i] = RevealInputSlot{
-			Cypher: cypher.Get(i).Bytes(),
+		input.Slots[i] = StripInputSlot{
+			Precomputation: precomputation.Get(i).Bytes(),
+			Cypher:         cypher.Get(i).Bytes(),
 		}
 	}
 
 	// Run kernel on the inputs
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	for i := 0; i < numSlots; i += stream.maxSlotsReveal {
+	for i := 0; i < numSlots; i += stream.maxSlotsStrip {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
-		if i+stream.maxSlotsReveal <= numSlots {
-			sliceEnd += stream.maxSlotsReveal
+		if i+stream.maxSlotsStrip <= numSlots {
+			sliceEnd += stream.maxSlotsStrip
 		} else {
 			sliceEnd = numSlots
 		}
-		thisInput := RevealInput{
+		thisInput := StripInput{
 			Slots:           input.Slots[i:sliceEnd],
 			Prime:           input.Prime,
 			PublicCypherKey: input.PublicCypherKey,
 		}
-		result := <-Reveal(thisInput, stream)
+		result := <-Strip(thisInput, stream)
 		if result.Err != nil {
 			return result.Err
 		}
 		// Populate with results
 		for j := range result.Slots {
 			g.SetBytes(cypher.Get(uint32(i+j)),
-				result.Slots[j].Cypher)
+				result.Slots[j].Precomputation)
 		}
 	}
 
@@ -74,28 +77,30 @@ var RevealChunk RevealChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 }
 
 // Bounds check to make sure that the stream can take all the inputs
-func validateRevealInput(input RevealInput, stream Stream) {
-	if len(input.Slots) > stream.maxSlotsReveal {
+func validateStripInput(input StripInput, stream Stream) {
+	if len(input.Slots) > stream.maxSlotsStrip {
 		// This can only happen because of user error (unlike Cuda
 		// problems), so panic to make the error apparent
 		log.Panicf(fmt.Sprintf("%v slots is more than this stream's "+
-			"max of %v for Reveal kernel",
-			len(input.Slots), stream.maxSlotsReveal))
+			"max of %v for Strip kernel",
+			len(input.Slots), stream.maxSlotsStrip))
 	}
 }
 
-// Reveal runs the reveal operation on cypher payloads inside the GPU
+// Strip runs the strip operation on precomputation and cypher payloads inside
+// the GPU
 // NOTE: publicCypherKey and prime should be byte slices obtained by running
 //       .Bytes() on the large int
 // The resulting byte slice should be trimmed and should be less than or
 // equal to the length of the template-instantiated BN on the GPU.
 // bnLength is a length in bits
-// TODO validate BN length in code (i.e. pick kernel variants based on bn length)
-func Reveal(input RevealInput, stream Stream) chan RevealResult {
+// TODO validate BN length in code (i.e. pick kernel variants based on bn
+// length)
+func Strip(input StripInput, stream Stream) chan StripResult {
 	// Return the result later, when the GPU job finishes
-	resultChan := make(chan RevealResult, 1)
+	resultChan := make(chan StripResult, 1)
 	go func() {
-		validateRevealInput(input, stream)
+		validateStripInput(input, stream)
 
 		// Arrange memory into stream buffers
 		numSlots := len(input.Slots)
@@ -104,7 +109,7 @@ func Reveal(input RevealInput, stream Stream) chan RevealResult {
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
 		constants := toSlice(C.getCpuConstants(stream.s),
-			int(C.getConstantsSize(kernelReveal)))
+			int(C.getConstantsSize(kernelStrip)))
 		offset := 0
 		// Prime
 		putInt(constants[offset:offset+bnLengthBytes],
@@ -114,10 +119,14 @@ func Reveal(input RevealInput, stream Stream) chan RevealResult {
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.PublicCypherKey, bnLengthBytes)
 
-		inputs := toSlice(C.getCpuInputs(stream.s, kernelReveal),
-			int(C.getInputSize(kernelReveal))*numSlots)
+		inputs := toSlice(C.getCpuInputs(stream.s, kernelStrip),
+			int(C.getInputSize(kernelStrip))*numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
+			// Put the PrecomputationPayload for this slot
+			putInt(inputs[offset:offset+bnLengthBytes],
+				input.Slots[i].Precomputation, bnLengthBytes)
+			offset += bnLengthBytes
 			// Put the CypherPayload for this slot
 			putInt(inputs[offset:offset+bnLengthBytes],
 				input.Slots[i].Cypher, bnLengthBytes)
@@ -125,46 +134,48 @@ func Reveal(input RevealInput, stream Stream) chan RevealResult {
 		}
 
 		// Upload, run, wait for download
-		err := put(stream, kernelReveal, numSlots)
+		err := put(stream, kernelStrip, numSlots)
 		if err != nil {
-			resultChan <- RevealResult{Err: err}
+			resultChan <- StripResult{Err: err}
 			return
 		}
 		err = run(stream)
 		if err != nil {
-			resultChan <- RevealResult{Err: err}
+			resultChan <- StripResult{Err: err}
 			return
 		}
 		err = download(stream)
 		if err != nil {
-			resultChan <- RevealResult{Err: err}
+			resultChan <- StripResult{Err: err}
 			return
 		}
 
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
-			C.getOutputSize(kernelReveal)*(C.size_t)(numSlots))
+			C.getOutputSize(kernelStrip)*(C.size_t)(numSlots))
 		results := toSlice(C.getCpuOutputs(stream.s), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
 		if err != nil {
-			resultChan <- RevealResult{Err: err}
+			resultChan <- StripResult{Err: err}
 			return
 		}
 
 		// Everything is OK, so let's go ahead and import the results
-		result := RevealResult{
-			Slots: make([]RevealResultSlot, numSlots),
+		result := StripResult{
+			Slots: make([]StripResultSlot, numSlots),
 			Err:   nil,
 		}
 
 		offset = 0
 		for i := 0; i < numSlots; i++ {
-			offsetend := offset + bnLengthBytes
-			result.Slots[i].Cypher = resultBuf[offset:offsetend]
-			putInt(result.Slots[i].Cypher,
-				results[offset:offsetend], bnLengthBytes)
+			// Output the computed Precomputation (EncryptedKeys)
+			// for the payload into each slot
+			end := offset + bnLengthBytes
+			result.Slots[i].Precomputation = resultBuf[offset:end]
+			putInt(result.Slots[i].Precomputation,
+				results[offset:end], bnLengthBytes)
 			offset += bnLengthBytes
 		}
 
@@ -174,20 +185,20 @@ func Reveal(input RevealInput, stream Stream) chan RevealResult {
 }
 
 // Helper functions
-// 1 number per input
+// 2 numbers per input
 // Returns size in bytes
-func getInputsSizeReveal() int {
-	return int(C.getInputSize(kernelReveal))
+func getInputsSizeStrip() int {
+	return int(C.getInputSize(kernelStrip))
 }
 
-// Returns size in bytes
 // 1 number per output
-func getOutputsSizeReveal() int {
-	return int(C.getOutputSize(kernelReveal))
+// Returns size in bytes
+func getOutputsSizeStrip() int {
+	return int(C.getOutputSize(kernelStrip))
 }
 
-// 2 numbers (prime, publicCypherKey)
+// Two numbers (prime, publicCypherKey)
 // Returns size in bytes
-func getConstantsSizeReveal() int {
-	return int(C.getConstantsSize(kernelReveal))
+func getConstantsSizeStrip() int {
+	return int(C.getConstantsSize(kernelStrip))
 }

@@ -17,7 +17,7 @@ type RevealInputSlot struct {
 	Cypher []byte
 }
 
-// RevealInput uses each individual slot and includes the Group, Prime, and the
+// RevealInput uses each individual slot and includes the Prime, and the
 // computed PublicCypherKey (Z)
 type RevealInput struct {
 	Slots           []RevealInputSlot
