@@ -10,6 +10,7 @@ type Stream struct {
 	s               unsafe.Pointer
 	maxSlotsElGamal int
 	maxSlotsExp     int
+	maxSlotsReveal  int
 }
 
 func (s *Stream) GetMaxSlotsElGamal() int {
@@ -18,6 +19,10 @@ func (s *Stream) GetMaxSlotsElGamal() int {
 
 func (s *Stream) GetMaxSlotsExp() int {
 	return s.maxSlotsExp
+}
+
+func (s *Stream) GetMaxSlotsReveal() int {
+	return s.maxSlotsReveal
 }
 
 // Optional improvements:
@@ -75,6 +80,9 @@ func MaxSlots(memSize int, op int) int {
 	case kernelElgamal:
 		constantsSize = getConstantsSizeElgamal()
 		slotSize = getInputsSizeElgamal() + getOutputsSizeElgamal()
+	case kernelReveal:
+		constantsSize = getConstantsSizeReveal()
+		slotSize = getInputsSizeReveal() + getOutputsSizeReveal()
 	}
 	memForSlots := memSize - constantsSize
 	if memForSlots < 0 {
@@ -90,6 +98,8 @@ func streamSizeContaining(numItems int, kernel int) int {
 		return getInputsSizePowm4096()*numItems + getOutputsSizePowm4096()*numItems + getConstantsSizePowm4096()
 	case kernelElgamal:
 		return getInputsSizeElgamal()*numItems + getOutputsSizeElgamal()*numItems + getConstantsSizeElgamal()
+	case kernelReveal:
+		return getInputsSizeReveal()*numItems + getOutputsSizeReveal()*numItems + getConstantsSizeReveal()
 	}
 	return 0
 }
