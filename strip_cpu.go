@@ -16,7 +16,7 @@ import (
 // StripChunk is stubbed unless GPU is present.
 var StripChunk StripChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	publicCypherKey *cyclic.Int,
-	precomputation, cypher *cyclic.IntBuffer) error {
+	precomputation []*cyclic.Int, cypher *cyclic.IntBuffer) error {
 	return errors.New(NoGpuErrStr)
 }
 
