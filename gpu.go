@@ -1,6 +1,17 @@
+
+////////////////////////////////////////////////////////////////////////////////
+// Copyright © 2019 Privategrity Corporation                                   /
+//                                                                             /
+// All rights reserved.                                                        /
+////////////////////////////////////////////////////////////////////////////////
+
 //+build linux,cuda
 
 package gpumaths
+
+// gpu.go contains helper functions and constants used by
+// the gpu implementation. See the exp, elgamal, reveal, or strip _gpu.go
+// files for implementations of specific operations.
 
 // When the gpumaths library itself is under development, it should
 // use the version of gpumaths that's built in-repository
@@ -21,14 +32,25 @@ import "C"
 import (
 	"errors"
 	"unsafe"
+	"reflect"
 )
 
 // Package C enum in golang for testing, possible export?
 const (
-	kernelPowmOdd = C.KERNEL_POWM_ODD
-	kernelElgamal = C.KERNEL_ELGAMAL
-	kernelMul2    = C.KERNEL_MUL2
+	bnSizeBits  = 4096
+	bnSizeBytes = bnSizeBits / 8
+	bnLength = 4096
+	bnLengthBytes = bnLength / 8
 )
+
+// Create byte slice viewing memory at a certain memory address with a
+// certain length
+// Here be dragons
+func toSlice(pointer unsafe.Pointer, size int) []byte {
+	return *(*[]byte)(unsafe.Pointer(
+		&reflect.SliceHeader{Data: uintptr(pointer),
+			Len: size, Cap: size}))
+}
 
 // Load the shared library and return any errors
 // Copies a C string into a Go error and frees the C string
@@ -40,47 +62,6 @@ func goError(cString *C.char) error {
 		return err
 	}
 	return nil
-}
-
-const (
-	bnSizeBits  = 4096
-	bnSizeBytes = bnSizeBits / 8
-)
-
-// Two numbers per input
-// Returns size in bytes
-func getInputsSizePowm4096() int {
-	return int(C.getInputSize(kernelPowmOdd))
-}
-
-// One number per output
-// Returns size in bytes
-func getOutputsSizePowm4096() int {
-	return int(C.getOutputSize(kernelPowmOdd))
-}
-
-// One number (prime)
-// Returns size in bytes
-func getConstantsSizePowm4096() int {
-	return int(C.getConstantsSize(kernelPowmOdd))
-}
-
-// Four numbers per input
-// Returns size in bytes
-func getInputsSizeElgamal() int {
-	return int(C.getInputSize(kernelElgamal))
-}
-
-// Two numbers per output
-// Returns size in bytes
-func getOutputsSizeElgamal() int {
-	return int(C.getOutputSize(kernelElgamal))
-}
-
-// Three numbers (g, prime, publicCypherKey)
-// Returns size in bytes
-func getConstantsSizeElgamal() int {
-	return int(C.getConstantsSize(kernelElgamal))
 }
 
 // Creates streams of a particular size meant to run a particular operation
