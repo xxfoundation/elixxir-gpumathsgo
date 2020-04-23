@@ -31,7 +31,7 @@ const kernelStrip = C.KERNEL_STRIP
 // Precondition: All int buffers must have the same length
 var StripChunk StripChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	publicCypherKey *cyclic.Int,
-	precomputation, cypher *cyclic.IntBuffer) error {
+	precomputation []*cyclic.Int, cypher *cyclic.IntBuffer) error {
 	// Populate Strip inputs
 	numSlots := cypher.Len()
 	input := StripInput{
@@ -41,7 +41,7 @@ var StripChunk StripChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	}
 	for i := uint32(0); i < uint32(numSlots); i++ {
 		input.Slots[i] = StripInputSlot{
-			Precomputation: precomputation.Get(i).Bytes(),
+			Precomputation: precomputation[i].Bytes(),
 			Cypher:         cypher.Get(i).Bytes(),
 		}
 	}
