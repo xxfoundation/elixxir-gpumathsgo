@@ -45,7 +45,7 @@ type StripResult struct {
 // StripChunkPrototype defines the function type for running the Strip
 // kernel in the GPU.
 type StripChunkPrototype func(p *StreamPool, g *cyclic.Group,
-	publicCypherKey *cyclic.Int,
+	precomputationOut *cyclic.IntBuffer, publicCypherKey *cyclic.Int,
 	precomputation []*cyclic.Int, cypher *cyclic.IntBuffer) error
 
 // GetInputSize is how big chunk sizes should be to run the reveal operation
