@@ -9,7 +9,7 @@ cache:
 variables:
   REPO_DIR: gitlab.com/elixxir
   REPO_NAME: gpumaths
-  DOCKER_IMAGE: sydney112/cuda-go:latest
+  DOCKER_IMAGE: elixxirlabs/cuda-go:latest
   MIN_CODE_COVERAGE: "20.0"
 
 before_script:
