@@ -6,7 +6,7 @@
 
 // gpu_test.go merely has helper functions used in all the other gpu tests.
 
-//+build linux,cuda
+//+build linux,gpu
 
 package gpumaths
 

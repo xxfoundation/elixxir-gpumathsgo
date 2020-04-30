@@ -1,4 +1,10 @@
-//+build linux,cuda
+////////////////////////////////////////////////////////////////////////////////
+// Copyright © 2019 Privategrity Corporation                                   /
+//                                                                             /
+// All rights reserved.                                                        /
+////////////////////////////////////////////////////////////////////////////////
+
+//+build linux,gpu
 
 package gpumaths
 
