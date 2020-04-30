@@ -37,7 +37,7 @@ type Mul2Result struct {
 
 // Prototype Definition
 
-// StripChunkPrototype defines the function type for running the Strip
+// Mul2ChunkPrototype defines the function type for running the Mul2
 // kernel in the GPU.
 type Mul2ChunkPrototype func(p *StreamPool, g *cyclic.Group,
 	result *cyclic.IntBuffer, x *cyclic.IntBuffer, y *cyclic.IntBuffer) error
