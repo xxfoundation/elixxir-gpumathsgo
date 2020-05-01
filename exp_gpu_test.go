@@ -4,7 +4,7 @@
 // All rights reserved.                                                        /
 ////////////////////////////////////////////////////////////////////////////////
 
-//+build linux,cuda
+//+build linux,gpu
 
 package gpumaths
 
@@ -36,7 +36,7 @@ func expGPU(t testing.TB, streamPool *StreamPool, batchSize uint32,
 	}
 }
 
-// Runs precomp decrypt test with GPU stream pool and graphs
+// Runs exponentiation test with GPU stream pool and graphs
 func TestExp(t *testing.T) {
 	batchSize := uint32(1024)
 	grp := initExp()

@@ -1,4 +1,10 @@
-//+build linux,cuda
+////////////////////////////////////////////////////////////////////////////////
+// Copyright © 2019 Privategrity Corporation                                   /
+//                                                                             /
+// All rights reserved.                                                        /
+////////////////////////////////////////////////////////////////////////////////
+
+//+build linux,gpu
 
 package gpumaths
 
@@ -12,6 +18,7 @@ type Stream struct {
 	maxSlotsExp     int
 	maxSlotsReveal  int
 	maxSlotsStrip   int
+	maxSlotsMul2    int
 }
 
 func (s *Stream) GetMaxSlotsElGamal() int {
@@ -28,6 +35,10 @@ func (s *Stream) GetMaxSlotsReveal() int {
 
 func (s *Stream) GetMaxSlotsStrip() int {
 	return s.maxSlotsStrip
+}
+
+func (s *Stream) GetMaxSlotsMul2() int {
+	return s.maxSlotsMul2
 }
 
 // Optional improvements:
@@ -91,6 +102,9 @@ func MaxSlots(memSize int, op int) int {
 	case kernelStrip:
 		constantsSize = getConstantsSizeStrip()
 		slotSize = getInputsSizeStrip() + getOutputsSizeStrip()
+	case kernelMul2:
+		constantsSize = getConstantsSizeMul2()
+		slotSize = getInputsSizeMul2() + getOutputsSizeMul2()
 	}
 	memForSlots := memSize - constantsSize
 	if memForSlots < 0 {

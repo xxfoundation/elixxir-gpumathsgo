@@ -4,7 +4,7 @@
 // All rights reserved.                                                        /
 ////////////////////////////////////////////////////////////////////////////////
 
-//+build !linux !cuda
+//+build !linux !gpu
 
 package gpumaths
 

@@ -9,21 +9,22 @@
 package gpumaths
 
 import (
-	"errors"
-	"gitlab.com/elixxir/crypto/cyclic"
+"errors"
+"gitlab.com/elixxir/crypto/cyclic"
 )
 
-// ElGamalChunk is stubbed unless GPU is present.
-var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group, key, privateKey *cyclic.IntBuffer, publicCypherKey *cyclic.Int, ecrKey, cypher *cyclic.IntBuffer) error {
+// Mul2Chunk is stubbed unless GPU is present.
+var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
+	result *cyclic.IntBuffer, x *cyclic.IntBuffer, y *cyclic.IntBuffer) error {
 	return errors.New(NoGpuErrStr)
 }
 
-// ElGamal is stubbed unless GPU is present.
-func ElGamal(input ElGamalInput, stream Stream) chan ElGamalResult {
+// Mul2 is an empty stub that returns an error when called.
+func Mul2(input Mul2Input, stream Stream) chan Mul2Result {
 	// Return the result later, when the GPU job finishes
-	resultChan := make(chan ElGamalResult, 1)
-	resultChan <- ElGamalResult{
-		Err: errors.New("gpumaths stubbed build doesn't support CUDA stream pool"),
+	resultChan := make(chan Mul2Result, 1)
+	resultChan <- Mul2Result{
+		Err: errors.New(NoGpuErrStr),
 	}
 	return resultChan
 }
