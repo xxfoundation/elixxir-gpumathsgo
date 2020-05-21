@@ -249,7 +249,7 @@ func BenchmarkElGamalCUDA4096_256_streams(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	err = resetDevice()
+	err = ResetDevice()
 	if err != nil {
 		b.Fatal(err)
 	}

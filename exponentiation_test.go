@@ -27,7 +27,7 @@ func TestPowm4096(t *testing.T) {
 
 	for i := 0; i < numSlots; i++ {
 		input.Slots[i] = ExpInputSlot{
-			Base:     g.Random(g.NewInt(1)).Bytes(),
+			Base: g.Random(g.NewInt(1)).Bytes(),
 			// Only use 256 bits of the exponent
 			Exponent: g.Random(g.NewInt(1)).Bytes()[480:],
 		}
@@ -62,7 +62,7 @@ func TestPowm4096(t *testing.T) {
 		t.Fatal(err)
 	}
 	// flush system profiling data, just in case
-	err = resetDevice()
+	err = ResetDevice()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestElgamal4096(t *testing.T) {
 		t.Fatal(err)
 	}
 	// flush system profiling data, just in case
-	err = resetDevice()
+	err = ResetDevice()
 	if err != nil {
 		t.Fatal(err)
 	}

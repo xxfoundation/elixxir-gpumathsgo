@@ -119,6 +119,7 @@ func BenchmarkExpCPU_1024(b *testing.B) {
 func BenchmarkExpCPU_8192(b *testing.B) {
 	runExpCPU(b, uint32(1024*8))
 }
+
 // Note that these tests take too long to run so are disabled
 // func BenchmarkExpCPU_16384(b *testing.B) {
 // 	runExpCPU(b, uint32(1024*16))
@@ -174,7 +175,7 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	}
 	b.StopTimer()
 	// Write out any cached profiling data
-	err = resetDevice()
+	err = ResetDevice()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -214,7 +215,7 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	// This benchmark doesn't include converting resulting memory back to
 	// cyclic ints
 	// Write out any cached profiling data
-	err = resetDevice()
+	err = ResetDevice()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -286,7 +287,7 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	err = resetDevice()
+	err = ResetDevice()
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -1,4 +1,3 @@
-
 ////////////////////////////////////////////////////////////////////////////////
 // Copyright © 2019 Privategrity Corporation                                   /
 //                                                                             /
@@ -31,15 +30,15 @@ package gpumaths
 import "C"
 import (
 	"errors"
-	"unsafe"
 	"reflect"
+	"unsafe"
 )
 
 // Package C enum in golang for testing, possible export?
 const (
-	bnSizeBits  = 4096
-	bnSizeBytes = bnSizeBits / 8
-	bnLength = 4096
+	bnSizeBits    = 4096
+	bnSizeBytes   = bnSizeBits / 8
+	bnLength      = 4096
 	bnLengthBytes = bnLength / 8
 )
 
@@ -157,7 +156,8 @@ func get(stream Stream) error {
 
 // Reset the CUDA device
 // Hopefully this will allow the CUDA profile to be gotten in the graphical profiler
-func resetDevice() error {
+// Also invalidates previous memory allocations, so best to free memory before calling
+func ResetDevice() error {
 	errString := C.resetDevice()
 	err := goError(errString)
 	return err
