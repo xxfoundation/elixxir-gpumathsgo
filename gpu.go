@@ -157,7 +157,7 @@ func get(stream Stream) error {
 // Reset the CUDA device
 // Hopefully this will allow the CUDA profile to be gotten in the graphical profiler
 // Also invalidates previous memory allocations, so best to free memory before calling
-func ResetDevice() error {
+func resetDevice() error {
 	errString := C.resetDevice()
 	err := goError(errString)
 	return err
