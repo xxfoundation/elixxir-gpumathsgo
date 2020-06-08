@@ -9,8 +9,8 @@
 package gpumaths
 
 import (
-"errors"
-"gitlab.com/elixxir/crypto/cyclic"
+	"errors"
+	"gitlab.com/elixxir/crypto/cyclic"
 )
 
 // Mul2Chunk is stubbed unless GPU is present.
@@ -27,4 +27,10 @@ func Mul2(input Mul2Input, stream Stream) chan Mul2Result {
 		Err: errors.New(NoGpuErrStr),
 	}
 	return resultChan
+}
+
+// Mul2Slice is stubbed unless GPU is present
+var Mul2Slice Mul2SlicePrototype = func(p *StreamPool, g *cyclic.Group,
+	result []*cyclic.Int, x *cyclic.IntBuffer, y []*cyclic.Int) error {
+	return errors.New(NoGpuErrStr)
 }

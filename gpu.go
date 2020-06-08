@@ -1,4 +1,3 @@
-
 ////////////////////////////////////////////////////////////////////////////////
 // Copyright © 2019 Privategrity Corporation                                   /
 //                                                                             /
@@ -31,15 +30,15 @@ package gpumaths
 import "C"
 import (
 	"errors"
-	"unsafe"
 	"reflect"
+	"unsafe"
 )
 
 // Package C enum in golang for testing, possible export?
 const (
-	bnSizeBits  = 4096
-	bnSizeBytes = bnSizeBits / 8
-	bnLength = 4096
+	bnSizeBits    = 4096
+	bnSizeBytes   = bnSizeBits / 8
+	bnLength      = 4096
 	bnLengthBytes = bnLength / 8
 )
 

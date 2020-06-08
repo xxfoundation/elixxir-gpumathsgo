@@ -20,8 +20,8 @@ type Mul2InputSlot struct {
 
 // Mul2Input uses each individual slot and includes the Prime
 type Mul2Input struct {
-	Slots           []Mul2InputSlot
-	Prime           []byte
+	Slots []Mul2InputSlot
+	Prime []byte
 }
 
 // Mul2ResultSlot returns the multiplication result
@@ -42,6 +42,10 @@ type Mul2Result struct {
 type Mul2ChunkPrototype func(p *StreamPool, g *cyclic.Group,
 	result *cyclic.IntBuffer, x *cyclic.IntBuffer, y *cyclic.IntBuffer) error
 
+// Multiply into a slice to provide compatibility with permutations
+type Mul2SlicePrototype func(p *StreamPool, g *cyclic.Group,
+	result []*cyclic.Int, x *cyclic.IntBuffer, y []*cyclic.Int) error
+
 // GetInputSize is how big chunk sizes should be to run the mul2 operation
 func (Mul2ChunkPrototype) GetInputSize() uint32 {
 	return 256
@@ -50,4 +54,14 @@ func (Mul2ChunkPrototype) GetInputSize() uint32 {
 // GetName return the name of the Mul2Chunk operation
 func (Mul2ChunkPrototype) GetName() string {
 	return "Mul2Chunk"
+}
+
+// GetInputSize is how big chunk sizes should be to run the mul2 operation
+func (Mul2SlicePrototype) GetInputSize() uint32 {
+	return 256
+}
+
+// GetName return the name of the Mul2Chunk operation
+func (Mul2SlicePrototype) GetName() string {
+	return "Mul2Slice"
 }

@@ -15,9 +15,9 @@ package gpumaths
 import "C"
 
 import (
-"fmt"
-"gitlab.com/elixxir/crypto/cyclic"
-"log"
+	"fmt"
+	"gitlab.com/elixxir/crypto/cyclic"
+	"log"
 )
 
 // mul2_gpu.go contains the CUDA ops for the Mul2 operation. Mul2(...)
@@ -34,17 +34,69 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	// Populate Mul2 inputs
 	numSlots := x.Len()
 	input := Mul2Input{
-		Slots:           make([]Mul2InputSlot, numSlots),
-		Prime:           g.GetPBytes(),
+		Slots: make([]Mul2InputSlot, numSlots),
+		Prime: g.GetPBytes(),
 	}
 	for i := uint32(0); i < uint32(numSlots); i++ {
 		input.Slots[i] = Mul2InputSlot{
 			X: x.Get(i).Bytes(),
-			Y:         y.Get(i).Bytes(),
+			Y: y.Get(i).Bytes(),
 		}
 	}
 
-	// Run kernel on the inputs
+	mul2Results, err := runMul2(p, g, numSlots, &input)
+	if err != nil {
+		return err
+	}
+
+	// Populate results
+	resultsStart := 0
+	for i := range mul2Results {
+		for j := range mul2Results[i].Slots {
+			g.SetBytes(results.Get(uint32(resultsStart+j)),
+				mul2Results[i].Slots[j].Result)
+		}
+		resultsStart += len(mul2Results[i].Slots)
+	}
+
+	return nil
+}
+
+var Mul2Slice Mul2SlicePrototype = func(p *StreamPool, g *cyclic.Group, results []*cyclic.Int, x *cyclic.IntBuffer, y []*cyclic.Int) error {
+	// Populate Mul2 inputs
+	numSlots := x.Len()
+	input := Mul2Input{
+		Slots: make([]Mul2InputSlot, numSlots),
+		Prime: g.GetPBytes(),
+	}
+	for i := uint32(0); i < uint32(numSlots); i++ {
+		input.Slots[i] = Mul2InputSlot{
+			X: x.Get(i).Bytes(),
+			Y: y[i].Bytes(),
+		}
+	}
+
+	mul2Results, err := runMul2(p, g, numSlots, &input)
+	if err != nil {
+		return err
+	}
+
+	// Populate results
+	resultsStart := 0
+	for i := range mul2Results {
+		for j := range mul2Results[i].Slots {
+			g.SetBytes(results[resultsStart+j],
+				mul2Results[i].Slots[j].Result)
+		}
+		resultsStart += len(mul2Results[i].Slots)
+	}
+
+	return nil
+}
+
+// Run mul2 on the inputs
+func runMul2(p *StreamPool, g *cyclic.Group, numSlots int, input *Mul2Input) ([]*Mul2Result, error) {
+	var results []*Mul2Result
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
 	for i := 0; i < numSlots; i += stream.maxSlotsMul2 {
@@ -56,21 +108,17 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 			sliceEnd = numSlots
 		}
 		thisInput := Mul2Input{
-			Slots:           input.Slots[i:sliceEnd],
-			Prime:           input.Prime,
+			Slots: input.Slots[i:sliceEnd],
+			Prime: input.Prime,
 		}
 		result := <-Mul2(thisInput, stream)
 		if result.Err != nil {
-			return result.Err
+			return results, result.Err
 		}
-		// Populate with results
-		for j := range result.Slots {
-			g.SetBytes(results.Get(uint32(i+j)),
-				result.Slots[j].Result)
-		}
+		results = append(results, &result)
 	}
 
-	return nil
+	return results, nil
 }
 
 // Bounds check to make sure that the stream can take all the inputs

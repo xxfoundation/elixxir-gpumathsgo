@@ -9,9 +9,9 @@
 package gpumaths
 
 import (
-"gitlab.com/elixxir/crypto/cryptops"
-"gitlab.com/elixxir/crypto/cyclic"
-"testing"
+	"gitlab.com/elixxir/crypto/cryptops"
+	"gitlab.com/elixxir/crypto/cyclic"
+	"testing"
 )
 
 // Helper functions shared by tests are located in gpu_test.go

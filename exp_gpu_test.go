@@ -119,6 +119,7 @@ func BenchmarkExpCPU_1024(b *testing.B) {
 func BenchmarkExpCPU_8192(b *testing.B) {
 	runExpCPU(b, uint32(1024*8))
 }
+
 // Note that these tests take too long to run so are disabled
 // func BenchmarkExpCPU_16384(b *testing.B) {
 // 	runExpCPU(b, uint32(1024*16))
