@@ -64,8 +64,8 @@ test:
   except:
     - tags
   script:
-    - mkdir -p /opt/elixxir/lib/
-    - mkdir -p /opt/elixxir/include
+    - mkdir -p /opt/xxnetwork/lib/
+    - mkdir -p /opt/xxnetwork/include
     - cat /usr/local/cuda/version.txt
     - nvidia-smi
     - apt-get update
