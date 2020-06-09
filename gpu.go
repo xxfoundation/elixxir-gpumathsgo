@@ -1,4 +1,3 @@
-
 ////////////////////////////////////////////////////////////////////////////////
 // Copyright © 2019 Privategrity Corporation                                   /
 //                                                                             /
@@ -22,8 +21,8 @@ package gpumaths
 // present
 
 /*
-#cgo CFLAGS: -I./cgbnBindings/powm -I/opt/elixxir/include
-#cgo LDFLAGS: -L/opt/elixxir/lib -lpowmosm75 -Wl,-rpath,./lib:/opt/elixxir/lib
+#cgo CFLAGS: -I./cgbnBindings/powm -I/opt/xxnetwork/include
+#cgo LDFLAGS: -L/opt/xxnetwork/lib -lpowmosm75 -Wl,-rpath,./lib:/opt/xxnetwork/lib
 #include <powm_odd_export.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,15 +30,15 @@ package gpumaths
 import "C"
 import (
 	"errors"
-	"unsafe"
 	"reflect"
+	"unsafe"
 )
 
 // Package C enum in golang for testing, possible export?
 const (
-	bnSizeBits  = 4096
-	bnSizeBytes = bnSizeBits / 8
-	bnLength = 4096
+	bnSizeBits    = 4096
+	bnSizeBytes   = bnSizeBits / 8
+	bnLength      = 4096
 	bnLengthBytes = bnLength / 8
 )
 

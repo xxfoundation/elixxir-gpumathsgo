@@ -8,16 +8,16 @@
 
 package gpumaths
 
-/*#cgo LDFLAGS: -Llib -lpowmosm75 -Wl,-rpath -Wl,./lib:/opt/elixxir/lib
-  #cgo CFLAGS: -I./cgbnBindings/powm -I/opt/elixxir/include
+/*#cgo LDFLAGS: -Llib -lpowmosm75 -Wl,-rpath -Wl,./lib:/opt/xxnetwork/lib
+  #cgo CFLAGS: -I./cgbnBindings/powm -I/opt/xxnetwork/include
   #include <powm_odd_export.h>
 */
 import "C"
 
 import (
-"fmt"
-"gitlab.com/elixxir/crypto/cyclic"
-"log"
+	"fmt"
+	"gitlab.com/elixxir/crypto/cyclic"
+	"log"
 )
 
 // mul2_gpu.go contains the CUDA ops for the Mul2 operation. Mul2(...)
@@ -34,13 +34,13 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	// Populate Mul2 inputs
 	numSlots := x.Len()
 	input := Mul2Input{
-		Slots:           make([]Mul2InputSlot, numSlots),
-		Prime:           g.GetPBytes(),
+		Slots: make([]Mul2InputSlot, numSlots),
+		Prime: g.GetPBytes(),
 	}
 	for i := uint32(0); i < uint32(numSlots); i++ {
 		input.Slots[i] = Mul2InputSlot{
 			X: x.Get(i).Bytes(),
-			Y:         y.Get(i).Bytes(),
+			Y: y.Get(i).Bytes(),
 		}
 	}
 
@@ -56,8 +56,8 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 			sliceEnd = numSlots
 		}
 		thisInput := Mul2Input{
-			Slots:           input.Slots[i:sliceEnd],
-			Prime:           input.Prime,
+			Slots: input.Slots[i:sliceEnd],
+			Prime: input.Prime,
 		}
 		result := <-Mul2(thisInput, stream)
 		if result.Err != nil {
