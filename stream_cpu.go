@@ -1,8 +1,9 @@
-////////////////////////////////////////////////////////////////////////////////
-// Copyright © 2019 Privategrity Corporation                                   /
-//                                                                             /
-// All rights reserved.                                                        /
-////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+// Copyright © 2020 xx network SEZC                                          //
+//                                                                           //
+// Use of this source code is governed by a license that can be found in the //
+// LICENSE file                                                              //
+///////////////////////////////////////////////////////////////////////////////
 
 //+build !linux !gpu
 
@@ -11,7 +12,7 @@ package gpumaths
 import "errors"
 
 // Stub out all exported symbols with reduced functionality
-type Stream struct {}
+type Stream struct{}
 
 func (s *Stream) GetMaxSlotsExp() int {
 	return 0
@@ -21,7 +22,7 @@ func (s *Stream) GetMaxSlotsElGamal() int {
 	return 0
 }
 
-type StreamPool struct {}
+type StreamPool struct{}
 
 func NewStreamPool(numStreams int, memSize int) (*StreamPool, error) {
 	return nil, errors.New("gpumaths stubbed build doesn't support CUDA stream pool")
