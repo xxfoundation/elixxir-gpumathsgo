@@ -2,7 +2,7 @@
 
 cache:
   untracked: true
-  key: "$CI_BUILD_REF_NAME"
+  key: "$CI_COMMIT_REF_NAME"
   paths:
     - vendor/
 
@@ -17,7 +17,7 @@ before_script:
   ## Go Setup
   ##
   - go version || echo "Go executable not found."
-  - echo $CI_BUILD_REF
+  - echo $CI_COMMIT_REF
   - echo $CI_PROJECT_DIR
   - echo $PWD
   - echo $USER
@@ -61,10 +61,30 @@ test:
   except:
     - tags
   script:
+    # Setup, diagnostics
     - mkdir -p /opt/xxnetwork/lib/
     - mkdir -p /opt/xxnetwork/include/
     - cat /usr/local/cuda/version.txt
     - nvidia-smi
+
+    # Check out appropriate native library version for testing
+    - git clone -b release git@gitlab.com:elixxir/gpumathsnative.git
+    - cd gpumathsnative
+    - if [ -v NATIVE_BRANCH_OVERRIDE ]
+    - then
+    - git checkout $NATIVE_BRANCH_OVERRIDE
+    - elif [ "$CI_COMMIT_REF_NAME" != "" ]
+    - then
+    - git checkout $CI_COMMIT_REF_NAME
+    - fi
+
+    # Build native library
+    - cd cgbnBindings/powm
+    - make turing
+    - sudo make install
+    - cd ../../..
+
+    # Run tests
     - apt-get update
     - apt-get install bc -y
     - mkdir -p testdata
