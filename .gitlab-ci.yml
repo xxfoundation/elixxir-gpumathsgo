@@ -8,7 +8,7 @@ cache:
 
 variables:
   REPO_DIR: gitlab.com/elixxir
-  REPO_NAME: gpumaths
+  REPO_NAME: gpumathsgo
   DOCKER_IMAGE: elixxirlabs/cuda-go:latest
   MIN_CODE_COVERAGE: "20.0"
 
@@ -48,9 +48,6 @@ setup:
     - go mod vendor -v
     - go build ./...
     - go mod tidy
-    - cd cgbnBindings/powm
-    - make turing
-    - make devinstall
   artifacts:
     paths:
      - vendor/
@@ -65,7 +62,7 @@ test:
     - tags
   script:
     - mkdir -p /opt/xxnetwork/lib/
-    - mkdir -p /opt/xxnetwork/include
+    - mkdir -p /opt/xxnetwork/include/
     - cat /usr/local/cuda/version.txt
     - nvidia-smi
     - apt-get update
