@@ -72,9 +72,11 @@ test:
     - cd gpumathsnative
     - if [ "$NATIVE_BRANCH_OVERRIDE" != "" ]
     - then
+    - echo $NATIVE_BRANCH_OVERRIDE
     - git checkout $NATIVE_BRANCH_OVERRIDE
     - elif [ "$CI_COMMIT_REF_NAME" != "" ]
     - then
+    - echo $CI_COMMIT_REF_NAME
     - git checkout $CI_COMMIT_REF_NAME
     - fi
 
