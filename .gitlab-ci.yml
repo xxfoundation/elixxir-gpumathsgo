@@ -81,7 +81,7 @@ test:
     # Build native library
     - cd cgbnBindings/powm
     - make turing
-    - sudo make install
+    - make install
     - cd ../../..
 
     # Run tests
