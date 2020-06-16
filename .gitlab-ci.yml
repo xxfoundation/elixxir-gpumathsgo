@@ -70,7 +70,7 @@ test:
     # Check out appropriate native library version for testing
     - git clone -b release git@gitlab.com:elixxir/gpumathsnative.git
     - cd gpumathsnative
-    - if [ -v NATIVE_BRANCH_OVERRIDE ]
+    - if [ "$NATIVE_BRANCH_OVERRIDE" != "" ]
     - then
     - git checkout $NATIVE_BRANCH_OVERRIDE
     - elif [ "$CI_COMMIT_REF_NAME" != "" ]
