@@ -1,16 +1,17 @@
-////////////////////////////////////////////////////////////////////////////////
-// Copyright © 2019 Privategrity Corporation                                   /
-//                                                                             /
-// All rights reserved.                                                        /
-////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+// Copyright © 2020 xx network SEZC                                          //
+//                                                                           //
+// Use of this source code is governed by a license that can be found in the //
+// LICENSE file                                                              //
+///////////////////////////////////////////////////////////////////////////////
 
 //+build !linux !gpu
 
 package gpumaths
 
 import (
-"errors"
-"gitlab.com/elixxir/crypto/cyclic"
+	"errors"
+	"gitlab.com/elixxir/crypto/cyclic"
 )
 
 // Mul2Chunk is stubbed unless GPU is present.

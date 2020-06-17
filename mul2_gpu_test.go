@@ -1,17 +1,18 @@
-////////////////////////////////////////////////////////////////////////////////
-// Copyright © 2019 Privategrity Corporation                                   /
-//                                                                             /
-// All rights reserved.                                                        /
-////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+// Copyright © 2020 xx network SEZC                                          //
+//                                                                           //
+// Use of this source code is governed by a license that can be found in the //
+// LICENSE file                                                              //
+///////////////////////////////////////////////////////////////////////////////
 
 //+build linux,gpu
 
 package gpumaths
 
 import (
-"gitlab.com/elixxir/crypto/cryptops"
-"gitlab.com/elixxir/crypto/cyclic"
-"testing"
+	"gitlab.com/elixxir/crypto/cryptops"
+	"gitlab.com/elixxir/crypto/cyclic"
+	"testing"
 )
 
 // Helper functions shared by tests are located in gpu_test.go

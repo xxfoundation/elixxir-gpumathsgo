@@ -2,13 +2,13 @@
 
 cache:
   untracked: true
-  key: "$CI_BUILD_REF_NAME"
+  key: "$CI_COMMIT_REF_NAME"
   paths:
     - vendor/
 
 variables:
   REPO_DIR: gitlab.com/elixxir
-  REPO_NAME: gpumaths
+  REPO_NAME: gpumathsgo
   DOCKER_IMAGE: elixxirlabs/cuda-go:latest
   MIN_CODE_COVERAGE: "20.0"
 
@@ -17,7 +17,7 @@ before_script:
   ## Go Setup
   ##
   - go version || echo "Go executable not found."
-  - echo $CI_BUILD_REF
+  - echo $CI_COMMIT_REF
   - echo $CI_PROJECT_DIR
   - echo $PWD
   - echo $USER
@@ -48,9 +48,6 @@ setup:
     - go mod vendor -v
     - go build ./...
     - go mod tidy
-    - cd cgbnBindings/powm
-    - make turing
-    - make devinstall
   artifacts:
     paths:
      - vendor/
@@ -64,10 +61,32 @@ test:
   except:
     - tags
   script:
+    # Setup, diagnostics
     - mkdir -p /opt/xxnetwork/lib/
-    - mkdir -p /opt/xxnetwork/include
+    - mkdir -p /opt/xxnetwork/include/
     - cat /usr/local/cuda/version.txt
     - nvidia-smi
+
+    # Check out appropriate native library version for testing
+    - git clone -b release git@gitlab.com:elixxir/gpumathsnative.git
+    - cd gpumathsnative
+    - if [ "$NATIVE_BRANCH_OVERRIDE" != "" ]
+    - then
+    - echo $NATIVE_BRANCH_OVERRIDE
+    - git checkout $NATIVE_BRANCH_OVERRIDE
+    - elif [ "$CI_COMMIT_REF_NAME" != "" ]
+    - then
+    - echo $CI_COMMIT_REF_NAME
+    - git checkout $CI_COMMIT_REF_NAME
+    - fi
+
+    # Build native library
+    - cd cgbnBindings/powm
+    - make turing
+    - make install
+    - cd ../../..
+
+    # Run tests
     - apt-get update
     - apt-get install bc -y
     - mkdir -p testdata

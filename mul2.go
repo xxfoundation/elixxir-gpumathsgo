@@ -1,8 +1,9 @@
-////////////////////////////////////////////////////////////////////////////////
-// Copyright © 2019 Privategrity Corporation                                   /
-//                                                                             /
-// All rights reserved.                                                        /
-////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+// Copyright © 2020 xx network SEZC                                          //
+//                                                                           //
+// Use of this source code is governed by a license that can be found in the //
+// LICENSE file                                                              //
+///////////////////////////////////////////////////////////////////////////////
 
 package gpumaths
 
@@ -20,8 +21,8 @@ type Mul2InputSlot struct {
 
 // Mul2Input uses each individual slot and includes the Prime
 type Mul2Input struct {
-	Slots           []Mul2InputSlot
-	Prime           []byte
+	Slots []Mul2InputSlot
+	Prime []byte
 }
 
 // Mul2ResultSlot returns the multiplication result

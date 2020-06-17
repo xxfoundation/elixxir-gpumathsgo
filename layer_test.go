@@ -1,8 +1,9 @@
-////////////////////////////////////////////////////////////////////////////////
-// Copyright © 2019 Privategrity Corporation                                   /
-//                                                                             /
-// All rights reserved.                                                        /
-////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+// Copyright © 2020 xx network SEZC                                          //
+//                                                                           //
+// Use of this source code is governed by a license that can be found in the //
+// LICENSE file                                                              //
+///////////////////////////////////////////////////////////////////////////////
 
 //+build linux,gpu
 
@@ -21,14 +22,13 @@ func TestExpChunk(t *testing.T) {
 	exp := g.NewIntBuffer(numSlots, g.NewInt(2))
 	result := g.NewIntBuffer(numSlots, g.NewInt(2))
 
-
 	for i := 0; i < numSlots; i++ {
 		g.Random(base.Get(uint32(i)))
 		g.Random(exp.Get(uint32(i)))
 	}
 
 	// Ensure correct behavior if the stream doesn't have enough memory to process the whole chunk
-	streamPool, err := NewStreamPool(1, streamSizeContaining(numSlots, kernelPowmOdd) / 3 - 800)
+	streamPool, err := NewStreamPool(1, streamSizeContaining(numSlots, kernelPowmOdd)/3-800)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,6 @@ func TestElGamalChunk(t *testing.T) {
 	ecrKey := g.NewIntBuffer(numSlots, g.NewInt(2))
 	cypher := g.NewIntBuffer(numSlots, g.NewInt(2))
 
-
 	for i := 0; i < numSlots; i++ {
 		g.Random(key.Get(uint32(i)))
 		g.Random(privateKey.Get(uint32(i)))
@@ -81,7 +80,7 @@ func TestElGamalChunk(t *testing.T) {
 	goCypher := cypher.DeepCopy()
 
 	// Ensure correct behavior if the stream doesn't have enough memory to process the whole chunk
-	streamPool, err := NewStreamPool(1, streamSizeContaining(numSlots, kernelElgamal) / 3 - 800)
+	streamPool, err := NewStreamPool(1, streamSizeContaining(numSlots, kernelElgamal)/3-800)
 	if err != nil {
 		t.Fatal(err)
 	}

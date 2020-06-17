@@ -1,4 +1,4 @@
-module gitlab.com/elixxir/gpumaths
+module gitlab.com/elixxir/gpumathsgo
 
 go 1.13
 
