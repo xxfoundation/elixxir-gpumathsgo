@@ -21,8 +21,8 @@ package gpumaths
 // present
 
 /*
-#cgo CFLAGS: -I./cgbnBindings/powm -I/opt/elixxir/include
-#cgo LDFLAGS: -L/opt/elixxir/lib -lpowmosm75 -Wl,-rpath,./lib:/opt/elixxir/lib
+#cgo CFLAGS: -I./cgbnBindings/powm -I/opt/xxnetwork/include
+#cgo LDFLAGS: -L/opt/xxnetwork/lib -lpowmosm75 -Wl,-rpath,./lib:/opt/xxnetwork/lib
 #include <powm_odd_export.h>
 #include <stdlib.h>
 #include <string.h>

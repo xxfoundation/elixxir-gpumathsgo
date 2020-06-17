@@ -8,8 +8,8 @@
 
 package gpumaths
 
-/*#cgo LDFLAGS: -Llib -lpowmosm75 -Wl,-rpath -Wl,./lib:/opt/elixxir/lib
-  #cgo CFLAGS: -I./cgbnBindings/powm -I/opt/elixxir/include
+/*#cgo LDFLAGS: -Llib -lpowmosm75 -Wl,-rpath -Wl,./lib:/opt/xxnetwork/lib
+  #cgo CFLAGS: -I./cgbnBindings/powm -I/opt/xxnetwork/include
   #include <powm_odd_export.h>
 */
 import "C"
