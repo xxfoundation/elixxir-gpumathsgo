@@ -41,11 +41,11 @@ type Mul2Result struct {
 // Mul2ChunkPrototype defines the function type for running the Mul2
 // kernel in the GPU.
 type Mul2ChunkPrototype func(p *StreamPool, g *cyclic.Group,
-	result *cyclic.IntBuffer, x *cyclic.IntBuffer, y *cyclic.IntBuffer) error
+	x *cyclic.IntBuffer, y *cyclic.IntBuffer, result *cyclic.IntBuffer) error
 
 // Multiply into a slice to provide compatibility with permutations
 type Mul2SlicePrototype func(p *StreamPool, g *cyclic.Group,
-	result []*cyclic.Int, x *cyclic.IntBuffer, y []*cyclic.Int) error
+	x *cyclic.IntBuffer, y []*cyclic.Int, result []*cyclic.Int) error
 
 // GetInputSize is how big chunk sizes should be to run the mul2 operation
 func (Mul2ChunkPrototype) GetInputSize() uint32 {

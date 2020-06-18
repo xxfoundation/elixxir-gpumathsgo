@@ -63,7 +63,7 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	return nil
 }
 
-var Mul2Slice Mul2SlicePrototype = func(p *StreamPool, g *cyclic.Group, results []*cyclic.Int, x *cyclic.IntBuffer, y []*cyclic.Int) error {
+var Mul2Slice Mul2SlicePrototype = func(p *StreamPool, g *cyclic.Group, x *cyclic.IntBuffer, y []*cyclic.Int, result []*cyclic.Int) error {
 	// Populate Mul2 inputs
 	numSlots := x.Len()
 	input := Mul2Input{
@@ -86,7 +86,7 @@ var Mul2Slice Mul2SlicePrototype = func(p *StreamPool, g *cyclic.Group, results 
 	resultsStart := 0
 	for i := range mul2Results {
 		for j := range mul2Results[i].Slots {
-			g.SetBytes(results[resultsStart+j],
+			g.SetBytes(result[resultsStart+j],
 				mul2Results[i].Slots[j].Result)
 		}
 		resultsStart += len(mul2Results[i].Slots)
