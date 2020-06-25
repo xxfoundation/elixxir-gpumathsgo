@@ -1,0 +1,137 @@
+# From: https://about.gitlab.com/2017/09/21/how-to-create-ci-cd-pipeline-with-autodeploy-to-kubernetes-using-gitlab-and-helm/
+
+cache:
+  untracked: true
+  key: "$CI_COMMIT_REF_NAME"
+  paths:
+    - vendor/
+
+variables:
+  REPO_DIR: gitlab.com/elixxir
+  REPO_NAME: gpumathsgo
+  DOCKER_IMAGE: elixxirlabs/cuda-go:latest
+  MIN_CODE_COVERAGE: "20.0"
+
+before_script:
+  ##
+  ## Go Setup
+  ##
+  - go version || echo "Go executable not found."
+  - echo $CI_COMMIT_REF
+  - echo $CI_PROJECT_DIR
+  - echo $PWD
+  - echo $USER
+  - eval $(ssh-agent -s)
+  - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+  - ssh-keyscan -t rsa gitlab.com > ~/.ssh/known_hosts
+  - git config --global url."git@gitlab.com:".insteadOf "https://gitlab.com/"
+  - export GOFLAGS=-mod=vendor
+  - export PATH=$HOME/go/bin:$PATH
+  - export GOPRIVATE=gitlab.com/elixxir/*
+
+stages:
+  - setup
+  - test
+  - build
+  - tag
+  - trigger_server
+  - trigger_release_server
+
+setup:
+  stage: setup
+  image: $DOCKER_IMAGE
+  except:
+    - tags
+  script:
+    - go mod vendor -v
+    - go build ./...
+    - go mod tidy
+  artifacts:
+    paths:
+     - vendor/
+     - lib/
+
+test:
+  stage: test
+  image: $DOCKER_IMAGE
+  tags:
+    - gpu
+  except:
+    - tags
+  script:
+    # Setup, diagnostics
+    - mkdir -p /opt/xxnetwork/lib/
+    - mkdir -p /opt/xxnetwork/include/
+    - cat /usr/local/cuda/version.txt
+    - nvidia-smi
+
+    # Check out appropriate native library version for testing
+    - git clone -b release git@gitlab.com:elixxir/gpumathsnative.git
+    - cd gpumathsnative
+    - if [ "$NATIVE_BRANCH_OVERRIDE" != "" ]
+    - then
+    - echo $NATIVE_BRANCH_OVERRIDE
+    - git checkout $NATIVE_BRANCH_OVERRIDE
+    - elif [ "$CI_COMMIT_REF_NAME" != "" ]
+    - then
+    - echo $CI_COMMIT_REF_NAME
+    - git checkout $CI_COMMIT_REF_NAME
+    - fi
+
+    # Build native library
+    - cd cgbnBindings/powm
+    - make turing
+    - make install
+    - cd ../../..
+
+    # Run tests
+    - apt-get update
+    - apt-get install bc -y
+    - mkdir -p testdata
+    # Test coverage
+    - go test -v -tags gpu -coverprofile=testdata/coverage.out -covermode atomic -coverpkg ./... -race ./...
+    # Is it possible to correctly merge the coverage data between these two build tags?
+    # (Or simply ignore coverage for non-CUDA dummy code paths)
+    - go test -v -coverprofile=testdata/coverage-noncuda.out -covermode atomic -coverpkg ./... -race ./...
+    # Get coverage data
+    - go tool cover -func=testdata/coverage.out
+    - go tool cover -html=testdata/coverage.out -o testdata/coverage.html
+    - go tool cover -func=testdata/coverage-noncuda.out
+    - go tool cover -html=testdata/coverage-noncuda.out -o testdata/coverage-noncuda.html
+
+    # Test Coverage Check
+    - go tool cover -func=testdata/coverage.out | grep "total:" | awk '{print $3}' | sed 's/\%//g' > testdata/coverage-percentage.txt
+    - export CODE_CHECK=$(echo "$(cat testdata/coverage-percentage.txt) >= $MIN_CODE_COVERAGE" | bc -l)
+    - (if [ "$CODE_CHECK" == "1" ]; then echo "Minimum coverage of $MIN_CODE_COVERAGE succeeded"; else echo "Minimum coverage of $MIN_CODE_COVERAGE failed"; exit 1; fi);
+  artifacts:
+    paths:
+      - testdata/
+
+build:
+  stage: build
+  image: $DOCKER_IMAGE
+  except:
+    - tags
+  script:
+    - mkdir -p release
+    - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags '-w -s' ./...
+  artifacts:
+    paths:
+     - release/
+
+# TODO(?): have server pull in the latest from release/master automatically for this pipeline, if possible
+trigger_server:
+  stage: trigger_server
+  script:
+    - "curl -X POST -F token=5be79349e632bcd07f452d04cc0583 -F ref=master https://gitlab.com/api/v4/projects/5014439/trigger/pipeline"
+  only:
+    - master
+
+trigger_release_server:
+  stage: trigger_release_server
+  script:
+    - "curl -X POST -F token=5be79349e632bcd07f452d04cc0583 -F ref=release https://gitlab.com/api/v4/projects/5014439/trigger/pipeline"
+  only:
+    - release

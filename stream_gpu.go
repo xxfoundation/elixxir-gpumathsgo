@@ -1,3 +1,12 @@
+///////////////////////////////////////////////////////////////////////////////
+// Copyright © 2020 xx network SEZC                                          //
+//                                                                           //
+// Use of this source code is governed by a license that can be found in the //
+// LICENSE file                                                              //
+///////////////////////////////////////////////////////////////////////////////
+
+//+build linux,gpu
+
 package gpumaths
 
 import "unsafe"
@@ -5,9 +14,32 @@ import "unsafe"
 // TODO Functions that currently take a stream as unsafe.Pointer should instead have a stream as the receiver
 type Stream struct {
 	// Pointer to stream and associated data, usable only on the C side
-	s unsafe.Pointer
-	MaxSlotsElGamal int
-	MaxSlotsExp int
+	s               unsafe.Pointer
+	maxSlotsElGamal int
+	maxSlotsExp     int
+	maxSlotsReveal  int
+	maxSlotsStrip   int
+	maxSlotsMul2    int
+}
+
+func (s *Stream) GetMaxSlotsElGamal() int {
+	return s.maxSlotsElGamal
+}
+
+func (s *Stream) GetMaxSlotsExp() int {
+	return s.maxSlotsExp
+}
+
+func (s *Stream) GetMaxSlotsReveal() int {
+	return s.maxSlotsReveal
+}
+
+func (s *Stream) GetMaxSlotsStrip() int {
+	return s.maxSlotsStrip
+}
+
+func (s *Stream) GetMaxSlotsMul2() int {
+	return s.maxSlotsMul2
 }
 
 // Optional improvements:
@@ -65,6 +97,15 @@ func MaxSlots(memSize int, op int) int {
 	case kernelElgamal:
 		constantsSize = getConstantsSizeElgamal()
 		slotSize = getInputsSizeElgamal() + getOutputsSizeElgamal()
+	case kernelReveal:
+		constantsSize = getConstantsSizeReveal()
+		slotSize = getInputsSizeReveal() + getOutputsSizeReveal()
+	case kernelStrip:
+		constantsSize = getConstantsSizeStrip()
+		slotSize = getInputsSizeStrip() + getOutputsSizeStrip()
+	case kernelMul2:
+		constantsSize = getConstantsSizeMul2()
+		slotSize = getInputsSizeMul2() + getOutputsSizeMul2()
 	}
 	memForSlots := memSize - constantsSize
 	if memForSlots < 0 {
@@ -77,9 +118,13 @@ func MaxSlots(memSize int, op int) int {
 func streamSizeContaining(numItems int, kernel int) int {
 	switch kernel {
 	case kernelPowmOdd:
-		return getInputsSizePowm4096() * numItems + getOutputsSizePowm4096() * numItems + getConstantsSizePowm4096()
+		return getInputsSizePowm4096()*numItems + getOutputsSizePowm4096()*numItems + getConstantsSizePowm4096()
 	case kernelElgamal:
-		return getInputsSizeElgamal() * numItems + getOutputsSizeElgamal() * numItems + getConstantsSizeElgamal()
+		return getInputsSizeElgamal()*numItems + getOutputsSizeElgamal()*numItems + getConstantsSizeElgamal()
+	case kernelReveal:
+		return getInputsSizeReveal()*numItems + getOutputsSizeReveal()*numItems + getConstantsSizeReveal()
+	case kernelStrip:
+		return getInputsSizeStrip()*numItems + getOutputsSizeStrip()*numItems + getConstantsSizeStrip()
 	}
 	return 0
 }

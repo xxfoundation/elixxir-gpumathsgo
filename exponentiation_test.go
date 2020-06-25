@@ -1,3 +1,12 @@
+///////////////////////////////////////////////////////////////////////////////
+// Copyright © 2020 xx network SEZC                                          //
+//                                                                           //
+// Use of this source code is governed by a license that can be found in the //
+// LICENSE file                                                              //
+///////////////////////////////////////////////////////////////////////////////
+
+//+build linux,gpu
+
 package gpumaths
 
 import (
@@ -19,7 +28,7 @@ func TestPowm4096(t *testing.T) {
 
 	for i := 0; i < numSlots; i++ {
 		input.Slots[i] = ExpInputSlot{
-			Base:     g.Random(g.NewInt(1)).Bytes(),
+			Base: g.Random(g.NewInt(1)).Bytes(),
 			// Only use 256 bits of the exponent
 			Exponent: g.Random(g.NewInt(1)).Bytes()[480:],
 		}

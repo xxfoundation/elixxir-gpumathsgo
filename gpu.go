@@ -1,4 +1,17 @@
+///////////////////////////////////////////////////////////////////////////////
+// Copyright © 2020 xx network SEZC                                          //
+//                                                                           //
+// Use of this source code is governed by a license that can be found in the //
+// LICENSE file                                                              //
+///////////////////////////////////////////////////////////////////////////////
+
+//+build linux,gpu
+
 package gpumaths
+
+// gpu.go contains helper functions and constants used by
+// the gpu implementation. See the exp, elgamal, reveal, or strip _gpu.go
+// files for implementations of specific operations.
 
 // When the gpumaths library itself is under development, it should
 // use the version of gpumaths that's built in-repository
@@ -9,8 +22,8 @@ package gpumaths
 // present
 
 /*
-#cgo CFLAGS: -I./cgbnBindings/powm -I/opt/elixxir/include
-#cgo LDFLAGS: -L/opt/elixxir/lib -lpowmosm75 -Wl,-rpath,./lib:/opt/elixxir/lib
+#cgo CFLAGS: -I./cgbnBindings/powm -I/opt/xxnetwork/include
+#cgo LDFLAGS: -L/opt/xxnetwork/lib -lpowmosm75 -Wl,-rpath,./lib:/opt/xxnetwork/lib
 #include <powm_odd_export.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,19 +31,30 @@ package gpumaths
 import "C"
 import (
 	"errors"
+	"reflect"
 	"unsafe"
 )
 
 // Package C enum in golang for testing, possible export?
 const (
-	kernelPowmOdd = C.KERNEL_POWM_ODD
-	kernelElgamal = C.KERNEL_ELGAMAL
-	kernelMul2    = C.KERNEL_MUL2
+	bnSizeBits    = 4096
+	bnSizeBytes   = bnSizeBits / 8
+	bnLength      = 4096
+	bnLengthBytes = bnLength / 8
 )
+
+// Create byte slice viewing memory at a certain memory address with a
+// certain length
+// Here be dragons
+func toSlice(pointer unsafe.Pointer, size int) []byte {
+	return *(*[]byte)(unsafe.Pointer(
+		&reflect.SliceHeader{Data: uintptr(pointer),
+			Len: size, Cap: size}))
+}
 
 // Load the shared library and return any errors
 // Copies a C string into a Go error and frees the C string
-func GoError(cString *C.char) error {
+func goError(cString *C.char) error {
 	if cString != nil {
 		errorStringGo := C.GoString(cString)
 		err := errors.New(errorStringGo)
@@ -38,47 +62,6 @@ func GoError(cString *C.char) error {
 		return err
 	}
 	return nil
-}
-
-const (
-	bnSizeBits  = 4096
-	bnSizeBytes = bnSizeBits / 8
-)
-
-// Two numbers per input
-// Returns size in bytes
-func getInputsSizePowm4096() int {
-	return int(C.getInputSize(kernelPowmOdd))
-}
-
-// One number per output
-// Returns size in bytes
-func getOutputsSizePowm4096() int {
-	return int(C.getOutputSize(kernelPowmOdd))
-}
-
-// One number (prime)
-// Returns size in bytes
-func getConstantsSizePowm4096() int {
-	return int(C.getConstantsSize(kernelPowmOdd))
-}
-
-// Four numbers per input
-// Returns size in bytes
-func getInputsSizeElgamal() int {
-	return int(C.getInputSize(kernelElgamal))
-}
-
-// Two numbers per output
-// Returns size in bytes
-func getOutputsSizeElgamal() int {
-	return int(C.getOutputSize(kernelElgamal))
-}
-
-// Three numbers (g, prime, publicCypherKey)
-// Returns size in bytes
-func getConstantsSizeElgamal() int {
-	return int(C.getConstantsSize(kernelElgamal))
 }
 
 // Creates streams of a particular size meant to run a particular operation
@@ -102,15 +85,21 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 			for j := 0; j < len(streams); j++ {
 				C.destroyStream(streams[j].s)
 			}
-			return nil, GoError(createStreamResult.error)
+			return nil, goError(createStreamResult.error)
 		}
 	}
 
 	maxSlotsElGamal := MaxSlots(capacity, kernelElgamal)
 	maxSlotsExp := MaxSlots(capacity, kernelPowmOdd)
+	maxSlotsReveal := MaxSlots(capacity, kernelReveal)
+	maxSlotsStrip := MaxSlots(capacity, kernelStrip)
+	maxSlotsMul2 := MaxSlots(capacity, kernelMul2)
 	for i := 0; i < numStreams; i++ {
-		streams[i].MaxSlotsElGamal = maxSlotsElGamal
-		streams[i].MaxSlotsExp = maxSlotsExp
+		streams[i].maxSlotsElGamal = maxSlotsElGamal
+		streams[i].maxSlotsExp = maxSlotsExp
+		streams[i].maxSlotsReveal = maxSlotsReveal
+		streams[i].maxSlotsStrip = maxSlotsStrip
+		streams[i].maxSlotsMul2 = maxSlotsMul2
 	}
 
 	return streams, nil
@@ -120,7 +109,7 @@ func destroyStreams(streams []Stream) error {
 	for i := 0; i < len(streams); i++ {
 		err := C.destroyStream(streams[i].s)
 		if err != nil {
-			return GoError(err)
+			return goError(err)
 		}
 	}
 	return nil
@@ -138,7 +127,7 @@ func destroyStreams(streams []Stream) error {
 func put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
 	uploadError := C.upload(C.uint(numSlots), stream.s, whichToRun)
 	if uploadError != nil {
-		return GoError(uploadError)
+		return goError(uploadError)
 	} else {
 		return nil
 	}
@@ -147,13 +136,13 @@ func put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
 // Can you use the C type like this?
 // Might need to redefine enumeration in Golang
 func run(stream Stream) error {
-	return GoError(C.run(stream.s))
+	return goError(C.run(stream.s))
 }
 
 // Enqueue a download for this stream after execution finishes
 // Doesn't actually block for the download
 func download(stream Stream) error {
-	return GoError(C.download(stream.s))
+	return goError(C.download(stream.s))
 }
 
 // Wait for this stream's download to finish and return a pointer to the results
@@ -163,14 +152,14 @@ func download(stream Stream) error {
 //  the results buffer directly. The length of the results buffer could be another
 //  field of the struct as well, although it would be better to allocate that earlier.
 func get(stream Stream) error {
-	return GoError(C.getResults(stream.s))
+	return goError(C.getResults(stream.s))
 }
 
 // Reset the CUDA device
 // Hopefully this will allow the CUDA profile to be gotten in the graphical profiler
 func resetDevice() error {
 	errString := C.resetDevice()
-	err := GoError(errString)
+	err := goError(errString)
 	return err
 }
 
