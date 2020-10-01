@@ -14,32 +14,8 @@ import "unsafe"
 // TODO Functions that currently take a stream as unsafe.Pointer should instead have a stream as the receiver
 type Stream struct {
 	// Pointer to stream and associated data, usable only on the C side
-	s               unsafe.Pointer
-	maxSlotsElGamal int
-	maxSlotsExp     int
-	maxSlotsReveal  int
-	maxSlotsStrip   int
-	maxSlotsMul2    int
-}
-
-func (s *Stream) GetMaxSlotsElGamal() int {
-	return s.maxSlotsElGamal
-}
-
-func (s *Stream) GetMaxSlotsExp() int {
-	return s.maxSlotsExp
-}
-
-func (s *Stream) GetMaxSlotsReveal() int {
-	return s.maxSlotsReveal
-}
-
-func (s *Stream) GetMaxSlotsStrip() int {
-	return s.maxSlotsStrip
-}
-
-func (s *Stream) GetMaxSlotsMul2() int {
-	return s.maxSlotsMul2
+	s       unsafe.Pointer
+	memSize int
 }
 
 // Optional improvements:
@@ -86,45 +62,4 @@ func (sm *StreamPool) ReturnStream(s Stream) {
 // If it's a problem in the future I'll have this method empty the channel before destroying the streams.
 func (sm *StreamPool) Destroy() error {
 	return destroyStreams(sm.streams)
-}
-
-func MaxSlots(memSize int, op int) int {
-	var constantsSize, slotSize int
-	switch op {
-	case kernelPowmOdd:
-		constantsSize = getConstantsSizePowm4096()
-		slotSize = getInputsSizePowm4096() + getOutputsSizePowm4096()
-	case kernelElgamal:
-		constantsSize = getConstantsSizeElgamal()
-		slotSize = getInputsSizeElgamal() + getOutputsSizeElgamal()
-	case kernelReveal:
-		constantsSize = getConstantsSizeReveal()
-		slotSize = getInputsSizeReveal() + getOutputsSizeReveal()
-	case kernelStrip:
-		constantsSize = getConstantsSizeStrip()
-		slotSize = getInputsSizeStrip() + getOutputsSizeStrip()
-	case kernelMul2:
-		constantsSize = getConstantsSizeMul2()
-		slotSize = getInputsSizeMul2() + getOutputsSizeMul2()
-	}
-	memForSlots := memSize - constantsSize
-	if memForSlots < 0 {
-		return 0
-	} else {
-		return memForSlots / slotSize
-	}
-}
-
-func streamSizeContaining(numItems int, kernel int) int {
-	switch kernel {
-	case kernelPowmOdd:
-		return getInputsSizePowm4096()*numItems + getOutputsSizePowm4096()*numItems + getConstantsSizePowm4096()
-	case kernelElgamal:
-		return getInputsSizeElgamal()*numItems + getOutputsSizeElgamal()*numItems + getConstantsSizeElgamal()
-	case kernelReveal:
-		return getInputsSizeReveal()*numItems + getOutputsSizeReveal()*numItems + getConstantsSizeReveal()
-	case kernelStrip:
-		return getInputsSizeStrip()*numItems + getOutputsSizeStrip()*numItems + getConstantsSizeStrip()
-	}
-	return 0
 }

@@ -12,7 +12,6 @@ package gpumaths
 import (
 	"gitlab.com/elixxir/crypto/cryptops"
 	"gitlab.com/elixxir/crypto/cyclic"
-	"math/rand"
 	"testing"
 )
 
@@ -29,6 +28,7 @@ func expCPU(t testing.TB, batchSize uint32, grp *cyclic.Group,
 	}
 }
 
+/*
 func expGPU(t testing.TB, streamPool *StreamPool, batchSize uint32,
 	grp *cyclic.Group, x, y, z *cyclic.IntBuffer) {
 	_, err := ExpChunk(streamPool, grp, x, y, z)
@@ -36,6 +36,7 @@ func expGPU(t testing.TB, streamPool *StreamPool, batchSize uint32,
 		t.Fatal(err)
 	}
 }
+
 
 // Runs exponentiation test with GPU stream pool and graphs
 func TestExp(t *testing.T) {
@@ -70,6 +71,7 @@ func TestExp(t *testing.T) {
 	}
 	streamPool.Destroy()
 }
+*/
 
 // BenchmarkExpCPU provides a baseline with a single-threaded CPU benchmark
 func runExpCPU(b *testing.B, batchSize uint32) {
@@ -88,6 +90,7 @@ func runExpCPU(b *testing.B, batchSize uint32) {
 	}
 }
 
+/*
 // BenchmarkExpGPU provides a basic GPU benchmark
 func runExpGPU(b *testing.B, batchSize uint32) {
 	grp := initExp()
@@ -111,6 +114,8 @@ func runExpGPU(b *testing.B, batchSize uint32) {
 	streamPool.Destroy()
 }
 
+*/
+
 func BenchmarkExpCPU_N(b *testing.B) {
 	runExpCPU(b, uint32(b.N))
 }
@@ -129,6 +134,7 @@ func BenchmarkExpCPU_8192(b *testing.B) {
 // 	runExpCPU(b, uint32(1024*32))
 // }
 
+/*
 func BenchmarkExpGPU_N(b *testing.B) {
 	runExpGPU(b, uint32(b.N))
 }
@@ -145,8 +151,12 @@ func BenchmarkExpGPU_32768(b *testing.B) {
 	runExpGPU(b, uint32(1024*32))
 }
 
+*/
+
+/*
 func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	g := makeTestGroup4096()
+	env := gpumaths4096{}
 	numSlots := b.N
 	input := ExpInput{
 		Slots:   make([]ExpInputSlot, numSlots),
@@ -159,7 +169,7 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 		}
 	}
 
-	stream, err := createStreams(1, streamSizeContaining(numSlots,
+	stream, err := createStreams(1, env.streamSizeContaining(numSlots,
 		kernelPowmOdd))
 	if err != nil {
 		b.Fatal(err)
@@ -182,6 +192,7 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	}
 }
 
+
 // x**y, x is 2048 bits long, y is 256 bits long
 func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	const xBitLen = 4096
@@ -189,9 +200,10 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
+	env := gpumaths4096{}
 
 	numSlots := b.N
-	streams, err := createStreams(1, streamSizeContaining(numSlots,
+	streams, err := createStreams(1, env.streamSizeContaining(numSlots,
 		kernelPowmOdd))
 	input := ExpInput{
 		Slots:   make([]ExpInputSlot, numSlots),
@@ -222,16 +234,17 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	}
 }
 
-func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
-	const xBitLen = 4096
+func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
+	const xBitLen = 2048
 	const xByteLen = xBitLen / 8
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
-	g := makeTestGroup4096()
+	g := makeTestGroup2048()
+	env := gpumaths2048{}
 	// Use two streams with 32k items per kernel launch
 	numItems := 32768
 
-	streamPool, err := NewStreamPool(2, streamSizeContaining(numItems,
+	streamPool, err := NewStreamPool(2, env.streamSizeContaining(numItems,
 		kernelPowmOdd))
 	if err != nil {
 		b.Fatal(err)
@@ -270,7 +283,7 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 			}
 		}
 		stream := streamPool.TakeStream()
-		resultChan := Exp(input, stream)
+		resultChan := Exp2048(input, stream)
 		go func() {
 			result := <-resultChan
 			streamPool.ReturnStream(stream)
@@ -293,3 +306,4 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		b.Fatal(err)
 	}
 }
+*/

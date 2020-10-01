@@ -15,18 +15,13 @@ package gpumaths
 */
 import "C"
 
-import (
-	"fmt"
-	"gitlab.com/elixxir/crypto/cyclic"
-	"log"
-)
-
 // strip_gpu.go contains the CUDA ops for the Strip operation. Strip(...)
 // performs the actual call into the library and StripChunk implements
 // the streaming interface function called by the server implementation.
 
 const kernelStrip = C.KERNEL_STRIP
 
+/*
 // StripChunk performs the Strip operation on the cypher and precomputation
 // payloads
 // Precondition: All int buffers must have the same length
@@ -110,7 +105,7 @@ func Strip(input StripInput, stream Stream) chan StripResult {
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
 		constants := toSlice(C.getCpuConstants(stream.s),
-			int(C.getConstantsSize(kernelStrip)))
+			int(C.getConstantsSize4096(kernelStrip)))
 		offset := 0
 		// Prime
 		putInt(constants[offset:offset+bnLengthBytes],
@@ -120,8 +115,8 @@ func Strip(input StripInput, stream Stream) chan StripResult {
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.PublicCypherKey, bnLengthBytes)
 
-		inputs := toSlice(C.getCpuInputs(stream.s, kernelStrip),
-			int(C.getInputSize(kernelStrip))*numSlots)
+		inputs := toSlice(C.getCpuInputs4096(stream.s, kernelStrip),
+			int(C.getInputSize4096(kernelStrip))*numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			// Put the PrecomputationPayload for this slot
@@ -153,8 +148,8 @@ func Strip(input StripInput, stream Stream) chan StripResult {
 
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
-			C.getOutputSize(kernelStrip)*(C.size_t)(numSlots))
-		results := toSlice(C.getCpuOutputs(stream.s), len(resultBuf))
+			C.getOutputSize4096(kernelStrip)*(C.size_t)(numSlots))
+		results := toSlice(C.getCpuOutputs4096(stream.s), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
@@ -189,17 +184,20 @@ func Strip(input StripInput, stream Stream) chan StripResult {
 // 2 numbers per input
 // Returns size in bytes
 func getInputsSizeStrip() int {
-	return int(C.getInputSize(kernelStrip))
+	return int(C.getInputSize4096(kernelStrip))
 }
 
 // 1 number per output
 // Returns size in bytes
 func getOutputsSizeStrip() int {
-	return int(C.getOutputSize(kernelStrip))
+	return int(C.getOutputSize4096(kernelStrip))
 }
 
 // Two numbers (prime, publicCypherKey)
 // Returns size in bytes
 func getConstantsSizeStrip() int {
-	return int(C.getConstantsSize(kernelStrip))
+	return int(C.getConstantsSize4096(kernelStrip))
 }
+
+
+*/

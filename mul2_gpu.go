@@ -15,17 +15,13 @@ package gpumaths
 */
 import "C"
 
-import (
-	"fmt"
-	"gitlab.com/elixxir/crypto/cyclic"
-	"log"
-)
-
 // mul2_gpu.go contains the CUDA ops for the Mul2 operation. Mul2(...)
 // performs the actual call into the library and Mul2Chunk implements
 // the streaming interface function called by the server implementation.
 
 const kernelMul2 = C.KERNEL_MUL2
+
+/*
 
 // Mul2Chunk performs the Mul2 operation on the cypher and precomputation
 // payloads
@@ -107,15 +103,15 @@ func Mul2(input Mul2Input, stream Stream) chan Mul2Result {
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
 		constants := toSlice(C.getCpuConstants(stream.s),
-			int(C.getConstantsSize(kernelMul2)))
+			int(C.getConstantsSize4096(kernelMul2)))
 		offset := 0
 		// Prime
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.Prime, bnLengthBytes)
 		offset += bnLengthBytes
 
-		inputs := toSlice(C.getCpuInputs(stream.s, kernelMul2),
-			int(C.getInputSize(kernelMul2))*numSlots)
+		inputs := toSlice(C.getCpuInputs4096(stream.s, kernelMul2),
+			int(C.getInputSize4096(kernelMul2))*numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			// Put the first operand for this slot
@@ -147,8 +143,8 @@ func Mul2(input Mul2Input, stream Stream) chan Mul2Result {
 
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
-			C.getOutputSize(kernelMul2)*(C.size_t)(numSlots))
-		results := toSlice(C.getCpuOutputs(stream.s), len(resultBuf))
+			C.getOutputSize4096(kernelMul2)*(C.size_t)(numSlots))
+		results := toSlice(C.getCpuOutputs4096(stream.s), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
@@ -182,17 +178,20 @@ func Mul2(input Mul2Input, stream Stream) chan Mul2Result {
 // 2 numbers per input
 // Returns size in bytes
 func getInputsSizeMul2() int {
-	return int(C.getInputSize(kernelMul2))
+	return int(C.getInputSize4096(kernelMul2))
 }
 
 // 1 number per output
 // Returns size in bytes
 func getOutputsSizeMul2() int {
-	return int(C.getOutputSize(kernelMul2))
+	return int(C.getOutputSize4096(kernelMul2))
 }
 
 // Two numbers (prime, publicCypherKey)
 // Returns size in bytes
 func getConstantsSizeMul2() int {
-	return int(C.getConstantsSize(kernelMul2))
+	return int(C.getConstantsSize4096(kernelMul2))
 }
+
+
+*/

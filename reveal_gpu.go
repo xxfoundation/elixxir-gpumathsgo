@@ -15,18 +15,13 @@ package gpumaths
 */
 import "C"
 
-import (
-	"fmt"
-	"gitlab.com/elixxir/crypto/cyclic"
-	"log"
-)
-
 // reveal_gpu.go contains the CUDA ops for the Reveal operation. Reveal(...)
 // performs the actual call into the library and RevealChunk implements
 // the streaming interface function called by the server implementation.
 
 const kernelReveal = C.KERNEL_REVEAL
 
+/*
 // RevealChunk performs the Reveal operation on the cypher payloads
 // Precondition: All int buffers must have the same length
 var RevealChunk RevealChunkPrototype = func(p *StreamPool, g *cyclic.Group,
@@ -105,7 +100,7 @@ func Reveal(input RevealInput, stream Stream) chan RevealResult {
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
 		constants := toSlice(C.getCpuConstants(stream.s),
-			int(C.getConstantsSize(kernelReveal)))
+			int(C.getConstantsSize4096(kernelReveal)))
 		offset := 0
 		// Prime
 		putInt(constants[offset:offset+bnLengthBytes],
@@ -115,8 +110,8 @@ func Reveal(input RevealInput, stream Stream) chan RevealResult {
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.PublicCypherKey, bnLengthBytes)
 
-		inputs := toSlice(C.getCpuInputs(stream.s, kernelReveal),
-			int(C.getInputSize(kernelReveal))*numSlots)
+		inputs := toSlice(C.getCpuInputs4096(stream.s, kernelReveal),
+			int(C.getInputSize4096(kernelReveal))*numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			// Put the CypherPayload for this slot
@@ -144,8 +139,8 @@ func Reveal(input RevealInput, stream Stream) chan RevealResult {
 
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
-			C.getOutputSize(kernelReveal)*(C.size_t)(numSlots))
-		results := toSlice(C.getCpuOutputs(stream.s), len(resultBuf))
+			C.getOutputSize4096(kernelReveal)*(C.size_t)(numSlots))
+		results := toSlice(C.getCpuOutputs4096(stream.s), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
@@ -178,17 +173,20 @@ func Reveal(input RevealInput, stream Stream) chan RevealResult {
 // 1 number per input
 // Returns size in bytes
 func getInputsSizeReveal() int {
-	return int(C.getInputSize(kernelReveal))
+	return int(C.getInputSize4096(kernelReveal))
 }
 
 // Returns size in bytes
 // 1 number per output
 func getOutputsSizeReveal() int {
-	return int(C.getOutputSize(kernelReveal))
+	return int(C.getOutputSize4096(kernelReveal))
 }
 
 // 2 numbers (prime, publicCypherKey)
 // Returns size in bytes
 func getConstantsSizeReveal() int {
-	return int(C.getConstantsSize(kernelReveal))
+	return int(C.getConstantsSize4096(kernelReveal))
 }
+
+
+*/

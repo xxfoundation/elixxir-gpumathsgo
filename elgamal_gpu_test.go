@@ -180,13 +180,14 @@ func BenchmarkElGamalCUDA4096_256_streams(b *testing.B) {
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
+	env := gpumaths4096{}
 	// Use two streams with 32k items per kernel launch
 	numItems := 32768
 
 	// OK, this shouldn't cause the test to run forever if the stream size is smaller than it should be (like this)
 	// In real-world usage, the number of slots passed in should be determined by what the stream supports
 	//  (i.e. check stream.MaxSlotsElgamal)
-	streamPool, err := NewStreamPool(2, streamSizeContaining(numItems, kernelElgamal))
+	streamPool, err := NewStreamPool(2, env.streamSizeContaining(numItems, kernelElgamal))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -232,7 +233,7 @@ func BenchmarkElGamalCUDA4096_256_streams(b *testing.B) {
 			}
 		}
 		stream := streamPool.TakeStream()
-		resultChan := ElGamal(input, stream)
+		resultChan := ElGamal(input, env, stream)
 		go func() {
 			result := <-resultChan
 			streamPool.ReturnStream(stream)

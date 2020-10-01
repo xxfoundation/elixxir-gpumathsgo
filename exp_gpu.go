@@ -15,12 +15,6 @@ package gpumaths
 */
 import "C"
 
-import (
-	"fmt"
-	"gitlab.com/elixxir/crypto/cyclic"
-	"log"
-)
-
 // exp_gpu.go contains the CUDA ops for the Exp operation. Exp(...)
 // performs the actual call into the library and ExpChunk implements
 // the streaming interface function called by the server implementation.
@@ -28,6 +22,8 @@ import (
 const (
 	kernelPowmOdd = C.KERNEL_POWM_ODD
 )
+
+/*
 
 // ExpChunk Performs exponentiation for two operands and place the result in z
 // (which is also returned)
@@ -93,13 +89,13 @@ func Exp(input ExpInput, stream Stream) chan ExpResult {
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
 		constants := toSlice(C.getCpuConstants(stream.s),
-			int(C.getConstantsSize(kernelPowmOdd)))
+			int(C.getConstantsSize4096(kernelPowmOdd)))
 		offset := 0
 		putInt(constants[offset:offset+bnLengthBytes], input.Modulus,
 			bnLengthBytes)
 
-		inputs := toSlice(C.getCpuInputs(stream.s, kernelPowmOdd),
-			int(C.getInputSize(kernelPowmOdd))*numSlots)
+		inputs := toSlice(C.getCpuInputs4096(stream.s, kernelPowmOdd),
+			int(C.getInputSize4096(kernelPowmOdd))*numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			putInt(inputs[offset:offset+bnLengthBytes],
@@ -129,8 +125,87 @@ func Exp(input ExpInput, stream Stream) chan ExpResult {
 
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
-			C.getOutputSize(kernelPowmOdd)*(C.size_t)(numSlots))
-		results := toSlice(C.getCpuOutputs(stream.s), len(resultBuf))
+			C.getOutputSize4096(kernelPowmOdd)*(C.size_t)(numSlots))
+		results := toSlice(C.getCpuOutputs4096(stream.s), len(resultBuf))
+
+		// Wait on things to finish with Cuda
+		err = get(stream)
+		if err != nil {
+			resultChan <- ExpResult{Err: err}
+			return
+		}
+
+		// Everything is OK, so let's go ahead and import the results
+		result := ExpResult{
+			Results: make([][]byte, numSlots),
+			Err:     nil,
+		}
+
+		offset = 0
+		for i := 0; i < numSlots; i++ {
+			end := offset + bnLengthBytes
+			result.Results[i] = resultBuf[offset:end]
+			putInt(result.Results[i], results[offset:end],
+				bnLengthBytes)
+			offset += bnLengthBytes
+		}
+
+		resultChan <- result
+	}()
+	return resultChan
+}
+
+func Exp2048(input ExpInput, stream Stream) chan ExpResult {
+	// Return the result later, when the GPU job finishes
+	resultChan := make(chan ExpResult, 1)
+	go func() {
+		validateExpInput(input, stream)
+
+		// Arrange memory into stream buffers
+		numSlots := len(input.Slots)
+
+		// TODO clean this up by implementing the
+		// arrangement/dearrangement with reader/writer interfaces
+		// or smth
+		constants := toSlice(C.getCpuConstants(stream.s),
+			int(C.getConstantsSize2048(kernelPowmOdd)))
+		offset := 0
+		putInt(constants[offset:offset+bnLengthBytes], input.Modulus,
+			bnLengthBytes)
+
+		inputs := toSlice(C.getCpuInputs2048(stream.s, kernelPowmOdd),
+			int(C.getInputSize2048(kernelPowmOdd))*numSlots)
+		offset = 0
+		for i := 0; i < numSlots; i++ {
+			putInt(inputs[offset:offset+bnLengthBytes],
+				input.Slots[i].Base, bnLengthBytes)
+			offset += bnLengthBytes
+			putInt(inputs[offset:offset+bnLengthBytes],
+				input.Slots[i].Exponent, bnLengthBytes)
+			offset += bnLengthBytes
+		}
+
+		// Upload, run, wait for download
+		err := put(stream, kernelPowmOdd, numSlots)
+		if err != nil {
+			resultChan <- ExpResult{Err: err}
+			return
+		}
+		err = run(stream)
+		if err != nil {
+			resultChan <- ExpResult{Err: err}
+			return
+		}
+		err = download(stream)
+		if err != nil {
+			resultChan <- ExpResult{Err: err}
+			return
+		}
+
+		// Results will be stored in this buffer
+		resultBuf := make([]byte,
+			C.getOutputSize2048(kernelPowmOdd)*(C.size_t)(numSlots))
+		results := toSlice(C.getCpuOutputs2048(stream.s), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
@@ -170,18 +245,30 @@ func validateExpInput(input ExpInput, stream Stream) {
 
 // Two numbers per input
 // Returns size in bytes
-func getInputsSizePowm4096() int {
-	return int(C.getInputSize(kernelPowmOdd))
+//func getInputsSizePowm4096() int {
+//	return int(C.getInputSize4096(kernelPowmOdd))
+//}
+func getInputsSizePowm2048() int {
+	return int(C.getInputSize2048(kernelPowmOdd))
 }
 
 // One number per output
 // Returns size in bytes
-func getOutputsSizePowm4096() int {
-	return int(C.getOutputSize(kernelPowmOdd))
+//func getOutputsSizePowm4096() int {
+//	return int(C.getOutputSize4096(kernelPowmOdd))
+//}
+func getOutputsSizePowm2048() int {
+	return int(C.getOutputSize2048(kernelPowmOdd))
 }
 
 // One number (prime)
 // Returns size in bytes
-func getConstantsSizePowm4096() int {
-	return int(C.getConstantsSize(kernelPowmOdd))
+//func getConstantsSizePowm4096() int {
+//	return int(C.getConstantsSize4096(kernelPowmOdd))
+//}
+func getConstantsSizePowm2048() int {
+	return int(C.getConstantsSize2048(kernelPowmOdd))
 }
+
+
+*/
