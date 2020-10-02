@@ -12,6 +12,7 @@ package gpumaths
 import (
 	"gitlab.com/elixxir/crypto/cryptops"
 	"gitlab.com/elixxir/crypto/cyclic"
+	"testing"
 )
 
 // Helper functions shared by tests are located in gpu_test.go
@@ -27,7 +28,6 @@ func mul2CPU(batchSize uint32, grp *cyclic.Group,
 	}
 }
 
-/*
 func mul2GPU(t testing.TB, streamPool *StreamPool,
 	grp *cyclic.Group, x, y, result *cyclic.IntBuffer) {
 	err := Mul2Chunk(streamPool, grp, x, y, result)
@@ -72,7 +72,8 @@ func TestMul2(t *testing.T) {
 				resultGPU.TextVerbose(16, printLen))
 		}
 	}
-	streamPool.Destroy()
+	err = streamPool.Destroy()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
-
-*/
