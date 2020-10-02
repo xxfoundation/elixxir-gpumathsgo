@@ -111,21 +111,22 @@ func Reveal(input RevealInput, env gpumathsEnv, stream Stream) chan RevealResult
 			env.getConstantsSize(kernelReveal))
 		offset := 0
 		// Prime
-		putInt(constants[offset:offset+env.getByteLen()],
-			input.Prime, env.getByteLen())
-		offset += env.getByteLen()
+		bnLengthBytes := env.getByteLen()
+		putInt(constants[offset:offset+bnLengthBytes],
+			input.Prime, bnLengthBytes)
+		offset += bnLengthBytes
 		// The compted PublicCypherKey
-		putInt(constants[offset:offset+env.getByteLen()],
-			input.PublicCypherKey, env.getByteLen())
+		putInt(constants[offset:offset+bnLengthBytes],
+			input.PublicCypherKey, bnLengthBytes)
 
 		inputs := toSlice(env.getCpuInputs(stream, kernelReveal),
 			env.getInputSize(kernelReveal)*numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			// Put the CypherPayload for this slot
-			putInt(inputs[offset:offset+env.getByteLen()],
-				input.Slots[i].Cypher, env.getByteLen())
-			offset += env.getByteLen()
+			putInt(inputs[offset:offset+bnLengthBytes],
+				input.Slots[i].Cypher, bnLengthBytes)
+			offset += bnLengthBytes
 		}
 
 		// Upload, run, wait for download
@@ -165,11 +166,11 @@ func Reveal(input RevealInput, env gpumathsEnv, stream Stream) chan RevealResult
 
 		offset = 0
 		for i := 0; i < numSlots; i++ {
-			offsetend := offset + env.getByteLen()
+			offsetend := offset + bnLengthBytes
 			result.Slots[i].Cypher = resultBuf[offset:offsetend]
 			putInt(result.Slots[i].Cypher,
-				results[offset:offsetend], env.getByteLen())
-			offset += env.getByteLen()
+				results[offset:offsetend], bnLengthBytes)
+			offset += bnLengthBytes
 		}
 
 		resultChan <- result

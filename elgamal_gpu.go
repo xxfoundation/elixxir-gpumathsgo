@@ -157,7 +157,6 @@ func ElGamal(input ElGamalInput, env gpumathsEnv, stream Stream) chan ElGamalRes
 		// Results will be stored in this buffer
 		resultBuf := make([]byte, env.getOutputSize(kernelElgamal)*numSlots)
 		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
-		//results := toSlice(C.getCpuOutputs4096(stream.s), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
