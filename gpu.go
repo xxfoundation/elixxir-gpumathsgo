@@ -49,6 +49,7 @@ type gpumathsEnv interface {
 	getCpuOutputs(stream Stream) unsafe.Pointer
 	getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer
 	maxSlots(memSize int, op C.enum_kernel) int
+	streamSizeContaining(numItems int, kernel int) int
 }
 
 // TODO These types implement gpumaths? interface

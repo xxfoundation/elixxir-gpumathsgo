@@ -12,6 +12,7 @@ package gpumaths
 import (
 	"gitlab.com/elixxir/crypto/cryptops"
 	"gitlab.com/elixxir/crypto/cyclic"
+	"testing"
 )
 
 func initReveal(batchSize uint32) (*cyclic.Group, *cyclic.Int) {
@@ -34,7 +35,6 @@ func revealCPU(batchSize uint32, grp *cyclic.Group,
 	}
 }
 
-/*
 func revealGPU(t testing.TB, streamPool *StreamPool,
 	grp *cyclic.Group, PublicCypherKey *cyclic.Int,
 	CypherPayload *cyclic.IntBuffer) {
@@ -65,7 +65,10 @@ func runRevealGPU(b *testing.B, batchSize uint32) {
 	cypherPayload := grp.NewIntBuffer(batchSize, grp.NewInt(1))
 	initRandomIntBuffer(grp, batchSize, cypherPayload, 11)
 
-	streamPool, err := NewStreamPool(2, 65536)
+	env := chooseEnv(grp)
+	memSize := env.streamSizeContaining(int(batchSize), kernelReveal)
+	b.Log(batchSize, memSize)
+	streamPool, err := NewStreamPool(2, memSize)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -101,5 +104,3 @@ func BenchmarkRevealGPU_16384(b *testing.B) {
 func BenchmarkRevealGPU_32768(b *testing.B) {
 	runRevealGPU(b, uint32(1024*32))
 }
-
-*/
