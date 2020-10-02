@@ -14,6 +14,11 @@ package gpumaths
 #include <powm_odd_export.h>
 */
 import "C"
+import (
+	"fmt"
+	"gitlab.com/elixxir/crypto/cyclic"
+	"log"
+)
 
 // exp_gpu.go contains the CUDA ops for the Exp operation. Exp(...)
 // performs the actual call into the library and ExpChunk implements
@@ -22,8 +27,6 @@ import "C"
 const (
 	kernelPowmOdd = C.KERNEL_POWM_ODD
 )
-
-/*
 
 // ExpChunk Performs exponentiation for two operands and place the result in z
 // (which is also returned)
@@ -48,11 +51,13 @@ var ExpChunk ExpChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	// chunk size exceeds buffer space in stream
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	for i := 0; i < numSlots; i += stream.maxSlotsExp {
+	env := chooseEnv(g)
+	maxSlotsExp := env.maxSlots(stream.memSize, kernelPowmOdd)
+	for i := 0; i < numSlots; i += maxSlotsExp {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
-		if i+stream.maxSlotsExp <= numSlots {
-			sliceEnd += stream.maxSlotsExp
+		if i+maxSlotsExp <= numSlots {
+			sliceEnd += maxSlotsExp
 		} else {
 			sliceEnd = numSlots
 		}
@@ -60,7 +65,7 @@ var ExpChunk ExpChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 			Slots:   input.Slots[i:sliceEnd],
 			Modulus: input.Modulus,
 		}
-		result := <-Exp(thisInput, stream)
+		result := <-Exp(thisInput, env, stream)
 		if result.Err != nil {
 			return z, result.Err
 		}
@@ -74,13 +79,11 @@ var ExpChunk ExpChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	return z, nil
 }
 
-// Exp runs exponentiation on the GPU
-// Precondition: Modulus must be odd
-func Exp(input ExpInput, stream Stream) chan ExpResult {
+func Exp(input ExpInput, env gpumathsEnv, stream Stream) chan ExpResult {
 	// Return the result later, when the GPU job finishes
 	resultChan := make(chan ExpResult, 1)
 	go func() {
-		validateExpInput(input, stream)
+		validateExpInput(input, env, stream)
 
 		// Arrange memory into stream buffers
 		numSlots := len(input.Slots)
@@ -89,13 +92,14 @@ func Exp(input ExpInput, stream Stream) chan ExpResult {
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
 		constants := toSlice(C.getCpuConstants(stream.s),
-			int(C.getConstantsSize4096(kernelPowmOdd)))
+			env.getConstantsSize(kernelPowmOdd))
 		offset := 0
+		bnLengthBytes := env.getByteLen()
 		putInt(constants[offset:offset+bnLengthBytes], input.Modulus,
 			bnLengthBytes)
 
-		inputs := toSlice(C.getCpuInputs4096(stream.s, kernelPowmOdd),
-			int(C.getInputSize4096(kernelPowmOdd))*numSlots)
+		inputs := toSlice(env.getCpuInputs(stream, kernelPowmOdd),
+			env.getInputSize(kernelPowmOdd)*numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			putInt(inputs[offset:offset+bnLengthBytes],
@@ -107,17 +111,17 @@ func Exp(input ExpInput, stream Stream) chan ExpResult {
 		}
 
 		// Upload, run, wait for download
-		err := put(stream, kernelPowmOdd, numSlots)
+		err := env.put(stream, kernelPowmOdd, numSlots)
 		if err != nil {
 			resultChan <- ExpResult{Err: err}
 			return
 		}
-		err = run(stream)
+		err = env.run(stream)
 		if err != nil {
 			resultChan <- ExpResult{Err: err}
 			return
 		}
-		err = download(stream)
+		err = env.download(stream)
 		if err != nil {
 			resultChan <- ExpResult{Err: err}
 			return
@@ -125,8 +129,8 @@ func Exp(input ExpInput, stream Stream) chan ExpResult {
 
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
-			C.getOutputSize4096(kernelPowmOdd)*(C.size_t)(numSlots))
-		results := toSlice(C.getCpuOutputs4096(stream.s), len(resultBuf))
+			env.getOutputSize(kernelPowmOdd)*numSlots)
+		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
@@ -155,120 +159,14 @@ func Exp(input ExpInput, stream Stream) chan ExpResult {
 	return resultChan
 }
 
-func Exp2048(input ExpInput, stream Stream) chan ExpResult {
-	// Return the result later, when the GPU job finishes
-	resultChan := make(chan ExpResult, 1)
-	go func() {
-		validateExpInput(input, stream)
-
-		// Arrange memory into stream buffers
-		numSlots := len(input.Slots)
-
-		// TODO clean this up by implementing the
-		// arrangement/dearrangement with reader/writer interfaces
-		// or smth
-		constants := toSlice(C.getCpuConstants(stream.s),
-			int(C.getConstantsSize2048(kernelPowmOdd)))
-		offset := 0
-		putInt(constants[offset:offset+bnLengthBytes], input.Modulus,
-			bnLengthBytes)
-
-		inputs := toSlice(C.getCpuInputs2048(stream.s, kernelPowmOdd),
-			int(C.getInputSize2048(kernelPowmOdd))*numSlots)
-		offset = 0
-		for i := 0; i < numSlots; i++ {
-			putInt(inputs[offset:offset+bnLengthBytes],
-				input.Slots[i].Base, bnLengthBytes)
-			offset += bnLengthBytes
-			putInt(inputs[offset:offset+bnLengthBytes],
-				input.Slots[i].Exponent, bnLengthBytes)
-			offset += bnLengthBytes
-		}
-
-		// Upload, run, wait for download
-		err := put(stream, kernelPowmOdd, numSlots)
-		if err != nil {
-			resultChan <- ExpResult{Err: err}
-			return
-		}
-		err = run(stream)
-		if err != nil {
-			resultChan <- ExpResult{Err: err}
-			return
-		}
-		err = download(stream)
-		if err != nil {
-			resultChan <- ExpResult{Err: err}
-			return
-		}
-
-		// Results will be stored in this buffer
-		resultBuf := make([]byte,
-			C.getOutputSize2048(kernelPowmOdd)*(C.size_t)(numSlots))
-		results := toSlice(C.getCpuOutputs2048(stream.s), len(resultBuf))
-
-		// Wait on things to finish with Cuda
-		err = get(stream)
-		if err != nil {
-			resultChan <- ExpResult{Err: err}
-			return
-		}
-
-		// Everything is OK, so let's go ahead and import the results
-		result := ExpResult{
-			Results: make([][]byte, numSlots),
-			Err:     nil,
-		}
-
-		offset = 0
-		for i := 0; i < numSlots; i++ {
-			end := offset + bnLengthBytes
-			result.Results[i] = resultBuf[offset:end]
-			putInt(result.Results[i], results[offset:end],
-				bnLengthBytes)
-			offset += bnLengthBytes
-		}
-
-		resultChan <- result
-	}()
-	return resultChan
-}
-
-// Checks if there's a number of exp slots that the stream can handle
-func validateExpInput(input ExpInput, stream Stream) {
-	if len(input.Slots) > stream.maxSlotsExp {
+// Bounds check to make sure that the stream can take all the inputs
+func validateExpInput(input ExpInput, env gpumathsEnv, stream Stream) {
+	maxSlotsExp := env.maxSlots(stream.memSize, kernelPowmOdd)
+	if len(input.Slots) > maxSlotsExp {
+		// This can only happen because of user error (unlike Cuda
+		// problems), so panic to make the error apparent
 		log.Panicf(fmt.Sprintf("%v slots is more than this stream's "+
 			"max of %v for Exp kernel",
-			len(input.Slots), stream.maxSlotsExp))
+			len(input.Slots), maxSlotsExp))
 	}
 }
-
-// Two numbers per input
-// Returns size in bytes
-//func getInputsSizePowm4096() int {
-//	return int(C.getInputSize4096(kernelPowmOdd))
-//}
-func getInputsSizePowm2048() int {
-	return int(C.getInputSize2048(kernelPowmOdd))
-}
-
-// One number per output
-// Returns size in bytes
-//func getOutputsSizePowm4096() int {
-//	return int(C.getOutputSize4096(kernelPowmOdd))
-//}
-func getOutputsSizePowm2048() int {
-	return int(C.getOutputSize2048(kernelPowmOdd))
-}
-
-// One number (prime)
-// Returns size in bytes
-//func getConstantsSizePowm4096() int {
-//	return int(C.getConstantsSize4096(kernelPowmOdd))
-//}
-func getConstantsSizePowm2048() int {
-	return int(C.getConstantsSize2048(kernelPowmOdd))
-}
-
-
-*/

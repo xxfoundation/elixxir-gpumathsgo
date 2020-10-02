@@ -16,7 +16,6 @@ import (
 )
 
 // CUDA powm result should match golang powm result for all slots
-/*
 func TestPowm4096(t *testing.T) {
 	env := gpumaths4096{}
 	numSlots := 128
@@ -41,7 +40,7 @@ func TestPowm4096(t *testing.T) {
 		t.Fatal(err)
 	}
 	stream := streamPool.TakeStream()
-	resultChan := Exp(input, stream)
+	resultChan := Exp(input, env, stream)
 	result := <-resultChan
 	if result.Err != nil {
 		t.Fatal(result.Err)
@@ -70,8 +69,6 @@ func TestPowm4096(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-*/
 
 func TestElgamal4096(t *testing.T) {
 	const numSlots = 12
