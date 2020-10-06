@@ -224,13 +224,22 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	}
 }
 
-func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
-	const xBitLen = 2048
-	const xByteLen = xBitLen / 8
+// Make sure to use build tag "gpu" when running this test or nothing will run.
+// For instance, run:
+//  $ go test -tags gpu -v -bench ^\QBenchmarkPowmCUDA2048in4096_256_streams\E$ -run ^$
+// You'll also need to have installed the gpumathsnative library for these benchmarks to run correctly.
+func BenchmarkPowmCUDA2048in4096_256_streams(b *testing.B) {
+	runBenchmarkPowmStreams(2048, makeTestGroup2048(), gpumaths4096{}, b)
+}
+
+func BenchmarkPowmCUDA4096in4096_256_streams(b *testing.B) {
+	runBenchmarkPowmStreams(4096, makeTestGroup4096(), gpumaths4096{}, b)
+}
+
+func runBenchmarkPowmStreams(xBitLen int, g *cyclic.Group, env gpumathsEnv, b *testing.B) {
+	var xByteLen = xBitLen / 8
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
-	g := makeTestGroup2048()
-	env := gpumaths2048{}
 	// Use two streams with 32k items per kernel launch
 	numItems := 32768
 
@@ -273,7 +282,7 @@ func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
 			}
 		}
 		stream := streamPool.TakeStream()
-		resultChan := Exp(input, gpumaths2048{}, stream)
+		resultChan := Exp(input, env, stream)
 		go func() {
 			result := <-resultChan
 			streamPool.ReturnStream(stream)
