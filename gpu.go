@@ -31,17 +31,88 @@ package gpumaths
 import "C"
 import (
 	"errors"
+	"fmt"
+	"gitlab.com/elixxir/crypto/cyclic"
 	"reflect"
 	"unsafe"
 )
 
-// Package C enum in golang for testing, possible export?
-const (
-	bnSizeBits    = 4096
-	bnSizeBytes   = bnSizeBits / 8
-	bnLength      = 4096
-	bnLengthBytes = bnLength / 8
+type gpumathsEnv interface {
+	download(stream Stream) error
+	run(stream Stream) error
+	put(stream Stream, whichToRun C.enum_kernel, numSlots int) error
+	getBitLen() int
+	getByteLen() int
+	getConstantsSize(C.enum_kernel) int
+	getOutputSize(C.enum_kernel) int
+	getInputSize(C.enum_kernel) int
+	getCpuOutputs(stream Stream) unsafe.Pointer
+	getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer
+	maxSlots(memSize int, op C.enum_kernel) int
+	streamSizeContaining(numItems int, kernel int) int
+}
+
+// TODO These types implement gpumaths? interface
+type (
+	gpumaths2048 struct{}
+	gpumaths3200 struct{}
+	gpumaths4096 struct{}
 )
+
+func chooseEnv(g *cyclic.Group) gpumathsEnv {
+	primeLen := g.GetP().BitLen()
+	len2048 := gpumaths2048{}.getBitLen()
+	len3200 := gpumaths3200{}.getBitLen()
+	len4096 := gpumaths4096{}.getBitLen()
+	if primeLen <= len2048 {
+		return gpumaths2048{}
+	} else if primeLen <= len3200 {
+		return gpumaths3200{}
+	} else if primeLen <= len4096 {
+		return gpumaths4096{}
+	} else {
+		panic(fmt.Sprintf("Prime %s was too big for any available gpumaths environment", g.GetP().Text(16)))
+	}
+}
+
+func (gpumaths2048) getCpuOutputs(stream Stream) unsafe.Pointer {
+	return C.getCpuOutputs2048(stream.s)
+}
+func (gpumaths3200) getCpuOutputs(stream Stream) unsafe.Pointer {
+	return C.getCpuOutputs3200(stream.s)
+}
+func (gpumaths4096) getCpuOutputs(stream Stream) unsafe.Pointer {
+	return C.getCpuOutputs4096(stream.s)
+}
+
+func (gpumaths2048) getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer {
+	return C.getCpuInputs2048(stream.s, kernel)
+}
+func (gpumaths3200) getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer {
+	return C.getCpuInputs3200(stream.s, kernel)
+}
+func (gpumaths4096) getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer {
+	return C.getCpuInputs4096(stream.s, kernel)
+}
+
+func (gpumaths2048) getBitLen() int {
+	return 2048
+}
+func (gpumaths2048) getByteLen() int {
+	return 2048 / 8
+}
+func (gpumaths3200) getBitLen() int {
+	return 3200
+}
+func (gpumaths3200) getByteLen() int {
+	return 3200 / 8
+}
+func (gpumaths4096) getBitLen() int {
+	return 4096
+}
+func (gpumaths4096) getByteLen() int {
+	return 4096 / 8
+}
 
 // Create byte slice viewing memory at a certain memory address with a
 // certain length
@@ -65,6 +136,9 @@ func goError(cString *C.char) error {
 }
 
 // Creates streams of a particular size meant to run a particular operation
+// TODO This ideally shouldn't need variants
+//  Maxslots should exist for each size variant
+//  (or just calculate it)
 func createStreams(numStreams int, capacity int) ([]Stream, error) {
 	streamCreateInfo := C.struct_streamCreateInfo{
 		capacity: C.size_t(capacity),
@@ -74,11 +148,11 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 
 	for i := 0; i < numStreams; i++ {
 		createStreamResult := C.createStream(streamCreateInfo)
-		stream := Stream{
-			s: createStreamResult.result,
-		}
-		if stream.s != nil {
-			streams = append(streams, stream)
+		if createStreamResult.result != nil {
+			streams = append(streams, Stream{
+				s:       createStreamResult.result,
+				memSize: capacity,
+			})
 		}
 		if createStreamResult.error != nil {
 			// Try to destroy all created streams to avoid leaking memory
@@ -87,19 +161,6 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 			}
 			return nil, goError(createStreamResult.error)
 		}
-	}
-
-	maxSlotsElGamal := MaxSlots(capacity, kernelElgamal)
-	maxSlotsExp := MaxSlots(capacity, kernelPowmOdd)
-	maxSlotsReveal := MaxSlots(capacity, kernelReveal)
-	maxSlotsStrip := MaxSlots(capacity, kernelStrip)
-	maxSlotsMul2 := MaxSlots(capacity, kernelMul2)
-	for i := 0; i < numStreams; i++ {
-		streams[i].maxSlotsElGamal = maxSlotsElGamal
-		streams[i].maxSlotsExp = maxSlotsExp
-		streams[i].maxSlotsReveal = maxSlotsReveal
-		streams[i].maxSlotsStrip = maxSlotsStrip
-		streams[i].maxSlotsMul2 = maxSlotsMul2
 	}
 
 	return streams, nil
@@ -124,8 +185,24 @@ func destroyStreams(streams []Stream) error {
 // TODO Store the kernel enum for the upload in the stream
 //  That way you don't have to pass that info again for run
 //  There should be no scenario where the stream gets run for a different kernel than the upload
-func put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
-	uploadError := C.upload(C.uint(numSlots), stream.s, whichToRun)
+func (gpumaths2048) put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	uploadError := C.upload2048(C.uint(numSlots), stream.s, whichToRun)
+	if uploadError != nil {
+		return goError(uploadError)
+	} else {
+		return nil
+	}
+}
+func (gpumaths3200) put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	uploadError := C.upload3200(C.uint(numSlots), stream.s, whichToRun)
+	if uploadError != nil {
+		return goError(uploadError)
+	} else {
+		return nil
+	}
+}
+func (gpumaths4096) put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	uploadError := C.upload4096(C.uint(numSlots), stream.s, whichToRun)
 	if uploadError != nil {
 		return goError(uploadError)
 	} else {
@@ -135,14 +212,109 @@ func put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
 
 // Can you use the C type like this?
 // Might need to redefine enumeration in Golang
-func run(stream Stream) error {
-	return goError(C.run(stream.s))
+func (gpumaths2048) run(stream Stream) error {
+	return goError(C.run2048(stream.s))
+}
+func (gpumaths3200) run(stream Stream) error {
+	return goError(C.run3200(stream.s))
+}
+func (gpumaths4096) run(stream Stream) error {
+	return goError(C.run4096(stream.s))
 }
 
 // Enqueue a download for this stream after execution finishes
 // Doesn't actually block for the download
-func download(stream Stream) error {
-	return goError(C.download(stream.s))
+func (gpumaths2048) download(stream Stream) error {
+	return goError(C.download2048(stream.s))
+}
+func (gpumaths3200) download(stream Stream) error {
+	return goError(C.download3200(stream.s))
+}
+func (gpumaths4096) download(stream Stream) error {
+	return goError(C.download4096(stream.s))
+}
+
+// Four numbers per input
+// Returns size in bytes
+func (gpumaths2048) getInputSize(kernel C.enum_kernel) int {
+	return int(C.getInputSize2048(kernel))
+}
+func (gpumaths3200) getInputSize(kernel C.enum_kernel) int {
+	return int(C.getInputSize3200(kernel))
+}
+func (gpumaths4096) getInputSize(kernel C.enum_kernel) int {
+	return int(C.getInputSize4096(kernel))
+}
+
+// Returns size in bytes
+func (gpumaths2048) getOutputSize(kernel C.enum_kernel) int {
+	return int(C.getOutputSize2048(kernel))
+}
+func (gpumaths3200) getOutputSize(kernel C.enum_kernel) int {
+	return int(C.getOutputSize3200(kernel))
+}
+func (gpumaths4096) getOutputSize(kernel C.enum_kernel) int {
+	return int(C.getOutputSize4096(kernel))
+}
+
+// Returns size in bytes
+func (gpumaths2048) getConstantsSize(kernel C.enum_kernel) int {
+	return int(C.getConstantsSize2048(kernel))
+}
+func (gpumaths3200) getConstantsSize(kernel C.enum_kernel) int {
+	return int(C.getConstantsSize3200(kernel))
+}
+func (gpumaths4096) getConstantsSize(kernel C.enum_kernel) int {
+	return int(C.getConstantsSize4096(kernel))
+}
+
+// Helper functions for sizing
+// Get the number of slots for an operation
+func (g gpumaths2048) maxSlots(memSize int, op C.enum_kernel) int {
+	constantsSize := g.getConstantsSize(op)
+	slotSize := g.getInputSize(op) + g.getOutputSize(op)
+	memForSlots := memSize - constantsSize
+	if memForSlots < 0 {
+		return 0
+	} else {
+		return memForSlots / slotSize
+	}
+}
+func (g gpumaths3200) maxSlots(memSize int, op C.enum_kernel) int {
+	constantsSize := g.getConstantsSize(op)
+	slotSize := g.getInputSize(op) + g.getOutputSize(op)
+	memForSlots := memSize - constantsSize
+	if memForSlots < 0 {
+		return 0
+	} else {
+		return memForSlots / slotSize
+	}
+}
+func (g gpumaths4096) maxSlots(memSize int, op C.enum_kernel) int {
+	constantsSize := g.getConstantsSize(op)
+	slotSize := g.getInputSize(op) + g.getOutputSize(op)
+	memForSlots := memSize - constantsSize
+	if memForSlots < 0 {
+		return 0
+	} else {
+		return memForSlots / slotSize
+	}
+}
+
+func (g gpumaths2048) streamSizeContaining(numItems int, kernel int) int {
+	return g.getInputSize(C.enum_kernel(kernel))*numItems +
+		g.getOutputSize(C.enum_kernel(kernel))*numItems +
+		g.getConstantsSize(C.enum_kernel(kernel))
+}
+func (g gpumaths3200) streamSizeContaining(numItems int, kernel int) int {
+	return g.getInputSize(C.enum_kernel(kernel))*numItems +
+		g.getOutputSize(C.enum_kernel(kernel))*numItems +
+		g.getConstantsSize(C.enum_kernel(kernel))
+}
+func (g gpumaths4096) streamSizeContaining(numItems int, kernel int) int {
+	return g.getInputSize(C.enum_kernel(kernel))*numItems +
+		g.getOutputSize(C.enum_kernel(kernel))*numItems +
+		g.getConstantsSize(C.enum_kernel(kernel))
 }
 
 // Wait for this stream's download to finish and return a pointer to the results

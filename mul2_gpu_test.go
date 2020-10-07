@@ -72,5 +72,8 @@ func TestMul2(t *testing.T) {
 				resultGPU.TextVerbose(16, printLen))
 		}
 	}
-	streamPool.Destroy()
+	err = streamPool.Destroy()
+	if err != nil {
+		t.Fatal(err)
+	}
 }

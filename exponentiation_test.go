@@ -17,6 +17,7 @@ import (
 
 // CUDA powm result should match golang powm result for all slots
 func TestPowm4096(t *testing.T) {
+	env := gpumaths4096{}
 	numSlots := 128
 	// Do computations with CUDA first
 	g := makeTestGroup4096()
@@ -34,12 +35,12 @@ func TestPowm4096(t *testing.T) {
 		}
 	}
 
-	streamPool, err := NewStreamPool(1, streamSizeContaining(numSlots, kernelPowmOdd))
+	streamPool, err := NewStreamPool(1, env.streamSizeContaining(numSlots, kernelPowmOdd))
 	if err != nil {
 		t.Fatal(err)
 	}
 	stream := streamPool.TakeStream()
-	resultChan := Exp(input, stream)
+	resultChan := Exp(input, env, stream)
 	result := <-resultChan
 	if result.Err != nil {
 		t.Fatal(result.Err)
@@ -73,6 +74,7 @@ func TestElgamal4096(t *testing.T) {
 	const numSlots = 12
 	// Do computations with CUDA first
 	g := makeTestGroup4096()
+	env := gpumaths4096{}
 
 	// Build some random inputs for elgamal kernel
 	input := ElGamalInput{
@@ -91,14 +93,14 @@ func TestElgamal4096(t *testing.T) {
 	}
 
 	// Run elgamal kernel
-	streamPool, err := NewStreamPool(1, streamSizeContaining(numSlots, kernelElgamal))
+	streamPool, err := NewStreamPool(1, env.streamSizeContaining(numSlots, kernelElgamal))
 	if err != nil {
 		t.Fatal(err)
 	}
 	stream := streamPool.TakeStream()
 	// I think I want to actually pass a stream to ElGamal...
 	// Is that too explicit/weird?
-	resultChan := ElGamal(input, stream)
+	resultChan := ElGamal(input, env, stream)
 	result := <-resultChan
 	if result.Err != nil {
 		t.Error(result.Err)
