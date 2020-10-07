@@ -65,7 +65,10 @@ func runRevealGPU(b *testing.B, batchSize uint32) {
 	cypherPayload := grp.NewIntBuffer(batchSize, grp.NewInt(1))
 	initRandomIntBuffer(grp, batchSize, cypherPayload, 11)
 
-	streamPool, err := NewStreamPool(2, 65536)
+	env := chooseEnv(grp)
+	memSize := env.streamSizeContaining(int(batchSize), kernelReveal)
+	b.Log(batchSize, memSize)
+	streamPool, err := NewStreamPool(2, memSize)
 	if err != nil {
 		b.Fatal(err)
 	}

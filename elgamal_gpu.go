@@ -51,14 +51,17 @@ var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 		}
 	}
 
+	env := chooseEnv(g)
+
 	// Run kernel on the inputs
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	for i := 0; i < numSlots; i += stream.maxSlotsElGamal {
+	maxSlotsElGamal := env.maxSlots(stream.memSize, kernelElgamal)
+	for i := 0; i < numSlots; i += maxSlotsElGamal {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
-		if i+stream.maxSlotsElGamal <= numSlots {
-			sliceEnd += stream.maxSlotsElGamal
+		if i+maxSlotsElGamal <= numSlots {
+			sliceEnd += maxSlotsElGamal
 		} else {
 			sliceEnd = numSlots
 		}
@@ -68,7 +71,7 @@ var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 			G:               input.G,
 			PublicCypherKey: input.PublicCypherKey,
 		}
-		result := <-ElGamal(thisInput, stream)
+		result := <-ElGamal(thisInput, env, stream)
 		if result.Err != nil {
 			return result.Err
 		}
@@ -91,11 +94,11 @@ var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 // equal to the length of the template-instantiated BN on the GPU.
 // bnLength is a length in bits
 // TODO validate BN length in code (i.e. pick kernel variants based on bn length)
-func ElGamal(input ElGamalInput, stream Stream) chan ElGamalResult {
+func ElGamal(input ElGamalInput, env gpumathsEnv, stream Stream) chan ElGamalResult {
 	// Return the result later, when the GPU job finishes
 	resultChan := make(chan ElGamalResult, 1)
 	go func() {
-		validateElgamalInput(input, stream)
+		validateElgamalInput(input, env, stream)
 
 		// Arrange memory into stream buffers
 		numSlots := len(input.Slots)
@@ -104,8 +107,9 @@ func ElGamal(input ElGamalInput, stream Stream) chan ElGamalResult {
 		// arrangement/dearrangement with reader/writer interfaces
 		//  or smth
 		constants := toSlice(C.getCpuConstants(stream.s),
-			int(C.getConstantsSize(kernelElgamal)))
+			env.getConstantsSize(kernelElgamal))
 		offset := 0
+		bnLengthBytes := env.getByteLen()
 		putInt(constants[offset:offset+bnLengthBytes], input.G,
 			bnLengthBytes)
 		offset += bnLengthBytes
@@ -115,8 +119,8 @@ func ElGamal(input ElGamalInput, stream Stream) chan ElGamalResult {
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.PublicCypherKey, bnLengthBytes)
 
-		inputs := toSlice(C.getCpuInputs(stream.s, kernelElgamal),
-			int(C.getInputSize(kernelElgamal))*numSlots)
+		inputs := toSlice(env.getCpuInputs(stream, kernelElgamal),
+			env.getInputSize(kernelElgamal)*numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			putInt(inputs[offset:offset+bnLengthBytes],
@@ -134,26 +138,25 @@ func ElGamal(input ElGamalInput, stream Stream) chan ElGamalResult {
 		}
 
 		// Upload, run, wait for download
-		err := put(stream, kernelElgamal, numSlots)
+		err := env.put(stream, kernelElgamal, numSlots)
 		if err != nil {
 			resultChan <- ElGamalResult{Err: err}
 			return
 		}
-		err = run(stream)
+		err = env.run(stream)
 		if err != nil {
 			resultChan <- ElGamalResult{Err: err}
 			return
 		}
-		err = download(stream)
+		err = env.download(stream)
 		if err != nil {
 			resultChan <- ElGamalResult{Err: err}
 			return
 		}
 
 		// Results will be stored in this buffer
-		resultBuf := make([]byte,
-			C.getOutputSize(kernelElgamal)*(C.size_t)(numSlots))
-		results := toSlice(C.getCpuOutputs(stream.s), len(resultBuf))
+		resultBuf := make([]byte, env.getOutputSize(kernelElgamal)*numSlots)
+		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
@@ -188,30 +191,13 @@ func ElGamal(input ElGamalInput, stream Stream) chan ElGamalResult {
 }
 
 // Bounds check to make sure that the stream can take all the inputs
-func validateElgamalInput(input ElGamalInput, stream Stream) {
-	if len(input.Slots) > stream.maxSlotsElGamal {
+func validateElgamalInput(input ElGamalInput, env gpumathsEnv, stream Stream) {
+	maxSlotsElGamal := env.maxSlots(stream.memSize, kernelElgamal)
+	if len(input.Slots) > maxSlotsElGamal {
 		// This can only happen because of user error (unlike Cuda
 		// problems), so panic to make the error apparent
 		log.Panicf(fmt.Sprintf("%v slots is more than this stream's "+
 			"max of %v for ElGamal kernel",
-			len(input.Slots), stream.maxSlotsElGamal))
+			len(input.Slots), maxSlotsElGamal))
 	}
-}
-
-// Four numbers per input
-// Returns size in bytes
-func getInputsSizeElgamal() int {
-	return int(C.getInputSize(kernelElgamal))
-}
-
-// Two numbers per output
-// Returns size in bytes
-func getOutputsSizeElgamal() int {
-	return int(C.getOutputSize(kernelElgamal))
-}
-
-// Three numbers (g, prime, publicCypherKey)
-// Returns size in bytes
-func getConstantsSizeElgamal() int {
-	return int(C.getConstantsSize(kernelElgamal))
 }
