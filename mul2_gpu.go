@@ -14,7 +14,6 @@ package gpumaths
   #include <powm_odd_export.h>
 */
 import "C"
-
 import (
 	"fmt"
 	"gitlab.com/elixxir/crypto/cyclic"
@@ -100,11 +99,13 @@ func runMul2(p *StreamPool, g *cyclic.Group, numSlots int, input *Mul2Input) ([]
 	var results []*Mul2Result
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	for i := 0; i < numSlots; i += stream.maxSlotsMul2 {
+	env := chooseEnv(g)
+	maxSlotsMul2 := env.maxSlots(stream.memSize, kernelMul2)
+	for i := 0; i < numSlots; i += maxSlotsMul2 {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
-		if i+stream.maxSlotsMul2 <= numSlots {
-			sliceEnd += stream.maxSlotsMul2
+		if i+maxSlotsMul2 <= numSlots {
+			sliceEnd += maxSlotsMul2
 		} else {
 			sliceEnd = numSlots
 		}
@@ -112,7 +113,7 @@ func runMul2(p *StreamPool, g *cyclic.Group, numSlots int, input *Mul2Input) ([]
 			Slots: input.Slots[i:sliceEnd],
 			Prime: input.Prime,
 		}
-		result := <-Mul2(thisInput, stream)
+		result := <-Mul2(thisInput, env, stream)
 		if result.Err != nil {
 			return results, result.Err
 		}
@@ -123,13 +124,14 @@ func runMul2(p *StreamPool, g *cyclic.Group, numSlots int, input *Mul2Input) ([]
 }
 
 // Bounds check to make sure that the stream can take all the inputs
-func validateMul2Input(input Mul2Input, stream Stream) {
-	if len(input.Slots) > stream.maxSlotsMul2 {
+func validateMul2Input(input Mul2Input, env gpumathsEnv, stream Stream) {
+	maxSlotsMul2 := env.maxSlots(stream.memSize, kernelMul2)
+	if len(input.Slots) > maxSlotsMul2 {
 		// This can only happen because of user error (unlike Cuda
 		// problems), so panic to make the error apparent
 		log.Panicf(fmt.Sprintf("%v slots is more than this stream's "+
 			"max of %v for Mul2 kernel",
-			len(input.Slots), stream.maxSlotsMul2))
+			len(input.Slots), maxSlotsMul2))
 	}
 }
 
@@ -142,11 +144,11 @@ func validateMul2Input(input Mul2Input, stream Stream) {
 // bnLength is a length in bits
 // TODO validate BN length in code (i.e. pick kernel variants based on bn
 // length)
-func Mul2(input Mul2Input, stream Stream) chan Mul2Result {
+func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 	// Return the result later, when the GPU job finishes
 	resultChan := make(chan Mul2Result, 1)
 	go func() {
-		validateMul2Input(input, stream)
+		validateMul2Input(input, env, stream)
 
 		// Arrange memory into stream buffers
 		numSlots := len(input.Slots)
@@ -155,15 +157,16 @@ func Mul2(input Mul2Input, stream Stream) chan Mul2Result {
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
 		constants := toSlice(C.getCpuConstants(stream.s),
-			int(C.getConstantsSize(kernelMul2)))
+			env.getConstantsSize(kernelMul2))
 		offset := 0
 		// Prime
+		bnLengthBytes := env.getByteLen()
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.Prime, bnLengthBytes)
 		offset += bnLengthBytes
 
-		inputs := toSlice(C.getCpuInputs(stream.s, kernelMul2),
-			int(C.getInputSize(kernelMul2))*numSlots)
+		inputs := toSlice(env.getCpuInputs(stream, kernelMul2),
+			env.getInputSize(kernelMul2)*numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			// Put the first operand for this slot
@@ -177,17 +180,17 @@ func Mul2(input Mul2Input, stream Stream) chan Mul2Result {
 		}
 
 		// Upload, run, wait for download
-		err := put(stream, kernelMul2, numSlots)
+		err := env.put(stream, kernelMul2, numSlots)
 		if err != nil {
 			resultChan <- Mul2Result{Err: err}
 			return
 		}
-		err = run(stream)
+		err = env.run(stream)
 		if err != nil {
 			resultChan <- Mul2Result{Err: err}
 			return
 		}
-		err = download(stream)
+		err = env.download(stream)
 		if err != nil {
 			resultChan <- Mul2Result{Err: err}
 			return
@@ -195,8 +198,8 @@ func Mul2(input Mul2Input, stream Stream) chan Mul2Result {
 
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
-			C.getOutputSize(kernelMul2)*(C.size_t)(numSlots))
-		results := toSlice(C.getCpuOutputs(stream.s), len(resultBuf))
+			env.getOutputSize(kernelMul2)*numSlots)
+		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
@@ -224,23 +227,4 @@ func Mul2(input Mul2Input, stream Stream) chan Mul2Result {
 		resultChan <- result
 	}()
 	return resultChan
-}
-
-// Helper functions
-// 2 numbers per input
-// Returns size in bytes
-func getInputsSizeMul2() int {
-	return int(C.getInputSize(kernelMul2))
-}
-
-// 1 number per output
-// Returns size in bytes
-func getOutputsSizeMul2() int {
-	return int(C.getOutputSize(kernelMul2))
-}
-
-// Two numbers (prime, publicCypherKey)
-// Returns size in bytes
-func getConstantsSizeMul2() int {
-	return int(C.getConstantsSize(kernelMul2))
 }

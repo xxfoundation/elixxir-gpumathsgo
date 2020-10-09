@@ -14,7 +14,6 @@ package gpumaths
 #include <powm_odd_export.h>
 */
 import "C"
-
 import (
 	"fmt"
 	"gitlab.com/elixxir/crypto/cyclic"
@@ -50,11 +49,13 @@ var StripChunk StripChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	// Run kernel on the inputs
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	for i := 0; i < numSlots; i += stream.maxSlotsStrip {
+	env := chooseEnv(g)
+	maxSlotsStrip := env.maxSlots(stream.memSize, kernelStrip)
+	for i := 0; i < numSlots; i += maxSlotsStrip {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
-		if i+stream.maxSlotsStrip <= numSlots {
-			sliceEnd += stream.maxSlotsStrip
+		if i+maxSlotsStrip <= numSlots {
+			sliceEnd += maxSlotsStrip
 		} else {
 			sliceEnd = numSlots
 		}
@@ -63,7 +64,7 @@ var StripChunk StripChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 			Prime:           input.Prime,
 			PublicCypherKey: input.PublicCypherKey,
 		}
-		result := <-Strip(thisInput, stream)
+		result := <-Strip(thisInput, env, stream)
 		if result.Err != nil {
 			return result.Err
 		}
@@ -78,13 +79,14 @@ var StripChunk StripChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 }
 
 // Bounds check to make sure that the stream can take all the inputs
-func validateStripInput(input StripInput, stream Stream) {
-	if len(input.Slots) > stream.maxSlotsStrip {
+func validateStripInput(input StripInput, env gpumathsEnv, stream Stream) {
+	maxSlotsStrip := env.maxSlots(stream.memSize, kernelStrip)
+	if len(input.Slots) > maxSlotsStrip {
 		// This can only happen because of user error (unlike Cuda
 		// problems), so panic to make the error apparent
 		log.Panicf(fmt.Sprintf("%v slots is more than this stream's "+
 			"max of %v for Strip kernel",
-			len(input.Slots), stream.maxSlotsStrip))
+			len(input.Slots), maxSlotsStrip))
 	}
 }
 
@@ -97,11 +99,11 @@ func validateStripInput(input StripInput, stream Stream) {
 // bnLength is a length in bits
 // TODO validate BN length in code (i.e. pick kernel variants based on bn
 // length)
-func Strip(input StripInput, stream Stream) chan StripResult {
+func Strip(input StripInput, env gpumathsEnv, stream Stream) chan StripResult {
 	// Return the result later, when the GPU job finishes
 	resultChan := make(chan StripResult, 1)
 	go func() {
-		validateStripInput(input, stream)
+		validateStripInput(input, env, stream)
 
 		// Arrange memory into stream buffers
 		numSlots := len(input.Slots)
@@ -110,9 +112,10 @@ func Strip(input StripInput, stream Stream) chan StripResult {
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
 		constants := toSlice(C.getCpuConstants(stream.s),
-			int(C.getConstantsSize(kernelStrip)))
+			int(env.getConstantsSize(kernelStrip)))
 		offset := 0
 		// Prime
+		bnLengthBytes := env.getByteLen()
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.Prime, bnLengthBytes)
 		offset += bnLengthBytes
@@ -120,8 +123,8 @@ func Strip(input StripInput, stream Stream) chan StripResult {
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.PublicCypherKey, bnLengthBytes)
 
-		inputs := toSlice(C.getCpuInputs(stream.s, kernelStrip),
-			int(C.getInputSize(kernelStrip))*numSlots)
+		inputs := toSlice(env.getCpuInputs(stream, kernelStrip),
+			env.getInputSize(kernelStrip)*numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			// Put the PrecomputationPayload for this slot
@@ -135,17 +138,17 @@ func Strip(input StripInput, stream Stream) chan StripResult {
 		}
 
 		// Upload, run, wait for download
-		err := put(stream, kernelStrip, numSlots)
+		err := env.put(stream, kernelStrip, numSlots)
 		if err != nil {
 			resultChan <- StripResult{Err: err}
 			return
 		}
-		err = run(stream)
+		err = env.run(stream)
 		if err != nil {
 			resultChan <- StripResult{Err: err}
 			return
 		}
-		err = download(stream)
+		err = env.download(stream)
 		if err != nil {
 			resultChan <- StripResult{Err: err}
 			return
@@ -153,8 +156,8 @@ func Strip(input StripInput, stream Stream) chan StripResult {
 
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
-			C.getOutputSize(kernelStrip)*(C.size_t)(numSlots))
-		results := toSlice(C.getCpuOutputs(stream.s), len(resultBuf))
+			env.getOutputSize(kernelStrip)*numSlots)
+		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
@@ -183,23 +186,4 @@ func Strip(input StripInput, stream Stream) chan StripResult {
 		resultChan <- result
 	}()
 	return resultChan
-}
-
-// Helper functions
-// 2 numbers per input
-// Returns size in bytes
-func getInputsSizeStrip() int {
-	return int(C.getInputSize(kernelStrip))
-}
-
-// 1 number per output
-// Returns size in bytes
-func getOutputsSizeStrip() int {
-	return int(C.getOutputSize(kernelStrip))
-}
-
-// Two numbers (prime, publicCypherKey)
-// Returns size in bytes
-func getConstantsSizeStrip() int {
-	return int(C.getConstantsSize(kernelStrip))
 }
