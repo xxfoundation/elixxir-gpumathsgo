@@ -226,7 +226,7 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 
 // Make sure to use build tag "gpu" when running this test or nothing will run.
 // For instance, run:
-//  $ go test -tags gpu -v -bench ^\QBenchmarkPowmCUDA2048in4096_256_streams\E$ -run ^$
+//  $ go test -tags gpu -v -bench ^BenchmarkPowmCUDA2048in4096_256_streams$ -run ^$
 // You'll also need to have installed the gpumathsnative library for these benchmarks to run correctly.
 func BenchmarkPowmCUDA2048in4096_256_streams(b *testing.B) {
 	runBenchmarkPowmStreams(2048, makeTestGroup2048(), gpumaths4096{}, b)
