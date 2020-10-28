@@ -12,6 +12,7 @@ package gpumaths
 import (
 	"gitlab.com/elixxir/crypto/cryptops"
 	"gitlab.com/elixxir/crypto/cyclic"
+	"sync"
 	"testing"
 )
 
@@ -76,4 +77,72 @@ func TestMul2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// single thread CPU (for simplicity) vs 1 GPU benchmark
+func BenchmarkMul2CPU4096(b *testing.B) {
+	grp := makeTestGroup4096()
+
+	// mul2 4kbit*4kbit
+	batchSize := uint32(b.N)
+	x := grp.NewIntBuffer(batchSize, grp.NewInt(1))
+	initRandomIntBuffer(grp, batchSize, x, 42)
+	y := grp.NewIntBuffer(batchSize, grp.NewInt(1))
+	initRandomIntBuffer(grp, batchSize, y, 43)
+
+	b.ResetTimer()
+	mul2CPU(batchSize, grp, x, y)
+}
+
+func BenchmarkMul2GPU4096(b *testing.B) {
+	grp := makeTestGroup4096()
+
+	numMuls := uint32(b.N)
+	x := grp.NewIntBuffer(numMuls, grp.NewInt(1))
+	initRandomIntBuffer(grp, numMuls, x, 42)
+	y := grp.NewIntBuffer(numMuls, grp.NewInt(1))
+	initRandomIntBuffer(grp, numMuls, y, 43)
+	result := grp.NewIntBuffer(numMuls, grp.NewInt(1))
+
+	numStreams := 6
+	streamPool, err := NewStreamPool(numStreams, 6553600)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	// Set size of gpu jobs
+	const gpuJobSize = 2048
+	chunkStart := uint32(0)
+	var chunkStartLock sync.Mutex
+	var wg sync.WaitGroup
+	for i := 0; i < numStreams; i++ {
+		wg.Add(1)
+		// We'll use both streams, as the server does
+		go func() {
+			for {
+				chunkStartLock.Lock()
+				thisChunkStart := chunkStart
+				chunkStart = thisChunkStart + gpuJobSize
+				chunkStartLock.Unlock()
+				if thisChunkStart >= numMuls {
+					break
+				}
+				thisChunkEnd := thisChunkStart + gpuJobSize
+				if thisChunkEnd > numMuls {
+					// bound subbuffer end to subbuffer end size
+					thisChunkEnd = numMuls
+				}
+				resultSub := result.GetSubBuffer(thisChunkStart, thisChunkEnd)
+				xSub := x.GetSubBuffer(thisChunkStart, thisChunkEnd)
+				ySub := y.GetSubBuffer(thisChunkStart, thisChunkEnd)
+				err := Mul2Chunk(streamPool, grp, resultSub, xSub, ySub)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
 }
