@@ -38,6 +38,8 @@ import (
 )
 
 type gpumathsEnv interface {
+	// enqueue calls put, run, and download all together
+	enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error
 	download(stream Stream) error
 	run(stream Stream) error
 	put(stream Stream, whichToRun C.enum_kernel, numSlots int) error
@@ -125,6 +127,7 @@ func toSlice(pointer unsafe.Pointer, size int) []byte {
 
 // Load the shared library and return any errors
 // Copies a C string into a Go error and frees the C string
+// TODO is this slow?
 func goError(cString *C.char) error {
 	if cString != nil {
 		errorStringGo := C.GoString(cString)
@@ -185,6 +188,30 @@ func destroyStreams(streams []Stream) error {
 // TODO Store the kernel enum for the upload in the stream
 //  That way you don't have to pass that info again for run
 //  There should be no scenario where the stream gets run for a different kernel than the upload
+func (gpumaths2048) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	uploadError := C.enqueue2048(C.uint(numSlots), stream.s, whichToRun)
+	if uploadError != nil {
+		return goError(uploadError)
+	} else {
+		return nil
+	}
+}
+func (gpumaths3200) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	uploadError := C.enqueue3200(C.uint(numSlots), stream.s, whichToRun)
+	if uploadError != nil {
+		return goError(uploadError)
+	} else {
+		return nil
+	}
+}
+func (gpumaths4096) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	uploadError := C.enqueue4096(C.uint(numSlots), stream.s, whichToRun)
+	if uploadError != nil {
+		return goError(uploadError)
+	} else {
+		return nil
+	}
+}
 func (gpumaths2048) put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
 	uploadError := C.upload2048(C.uint(numSlots), stream.s, whichToRun)
 	if uploadError != nil {
@@ -326,6 +353,11 @@ func (g gpumaths4096) streamSizeContaining(numItems int, kernel int) int {
 func get(stream Stream) error {
 	return goError(C.getResults(stream.s))
 }
+
+// get2 queries the stream to see if the event has completed
+//func get2(stream Stream) error {
+//	return goError(C.getResults2(stream.s))
+//}
 
 // Reset the CUDA device
 // Hopefully this will allow the CUDA profile to be gotten in the graphical profiler

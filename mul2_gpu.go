@@ -97,10 +97,17 @@ func validateMul2Input(input Mul2Input, env gpumathsEnv, stream Stream) {
 // TODO validate BN length in code (i.e. pick kernel variants based on bn
 // length)
 func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
+	//callId := rand.Intn(9999)
+	//start := time.Now()
+	//println("starting mul2 call", callId, "with", len(input.Slots), "slots at", start.String())
 	// Return the result later, when the GPU job finishes
 	resultChan := make(chan Mul2Result, 1)
 	go func() {
+		// Validation took a long time too?
+		// It's a cgo call, but we could cache it like before...
 		validateMul2Input(input, env, stream)
+		//println("Call", callId, "post validation", time.Since(start))
+		//start = time.Now()
 
 		// Arrange memory into stream buffers
 		numSlots := len(input.Slots)
@@ -113,8 +120,10 @@ func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 		offset := 0
 		// Prime
 		bnLengthBytes := env.getByteLen()
+		//getSliceStart := time.Now()
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.Prime, bnLengthBytes)
+		//println("time for getting consts slice:",callId, time.Since(getSliceStart))
 		offset += bnLengthBytes
 
 		inputs := toSlice(env.getCpuInputs(stream, kernelMul2),
@@ -130,23 +139,31 @@ func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 				input.Slots[i].Y, bnLengthBytes)
 			offset += bnLengthBytes
 		}
+		//println("Call", callId, "post arrangement", time.Since(start))
+		//start = time.Now()
 
 		// Upload, run, wait for download
-		err := env.put(stream, kernelMul2, numSlots)
+		err := env.enqueue(stream, kernelMul2, numSlots)
+		//println("Call", callId, "post put", time.Since(start))
+		//start = time.Now()
 		if err != nil {
 			resultChan <- Mul2Result{Err: err}
 			return
 		}
-		err = env.run(stream)
-		if err != nil {
-			resultChan <- Mul2Result{Err: err}
-			return
-		}
-		err = env.download(stream)
-		if err != nil {
-			resultChan <- Mul2Result{Err: err}
-			return
-		}
+		//err = env.run(stream)
+		//println("Call", callId, "post run", time.Since(start))
+		//start = time.Now()
+		//if err != nil {
+		//	resultChan <- Mul2Result{Err: err}
+		//	return
+		//}
+		//err = env.download(stream)
+		//println("Call", callId, "post download", time.Since(start))
+		//start = time.Now()
+		//if err != nil {
+		//	resultChan <- Mul2Result{Err: err}
+		//	return
+		//}
 
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
@@ -154,7 +171,14 @@ func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
 
 		// Wait on things to finish with Cuda
+		// Blocks for a long time? Could be a problem?
+		// Attempt 1: basic polling loop
+		//for getErr := get2(stream); getErr != nil; getErr = get2(stream) {
+		//	time.Sleep(200*time.Microsecond)
+		//}
 		err = get(stream)
+		//println("Call", callId, "post get", time.Since(start))
+		//start = time.Now()
 		if err != nil {
 			resultChan <- Mul2Result{Err: err}
 			return
@@ -175,6 +199,7 @@ func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 				results[offset:end], bnLengthBytes)
 			offset += bnLengthBytes
 		}
+		//println("Call", callId, "post arrangement", time.Since(start))
 
 		resultChan <- result
 	}()
