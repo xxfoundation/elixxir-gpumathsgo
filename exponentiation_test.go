@@ -17,7 +17,7 @@ import (
 
 // CUDA powm result should match golang powm result for all slots
 func TestPowm4096(t *testing.T) {
-	env := gpumaths4096{}
+	env := &gpumathsEnv4096
 	numSlots := 128
 	// Do computations with CUDA first
 	g := makeTestGroup4096()
@@ -74,7 +74,7 @@ func TestElgamal4096(t *testing.T) {
 	const numSlots = 12
 	// Do computations with CUDA first
 	g := makeTestGroup4096()
-	env := gpumaths4096{}
+	env := &gpumathsEnv4096
 
 	// Build some random inputs for elgamal kernel
 	input := ElGamalInput{

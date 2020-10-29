@@ -56,22 +56,36 @@ type gpumathsEnv interface {
 
 // TODO These types implement gpumaths? interface
 type (
-	gpumaths2048 struct{}
-	gpumaths3200 struct{}
-	gpumaths4096 struct{}
+	gpumaths2048 struct{ sizeData }
+	gpumaths3200 struct{ sizeData }
+	gpumaths4096 struct{ sizeData }
 )
 
+var gpumathsEnv2048 gpumaths2048
+var gpumathsEnv3200 gpumaths3200
+var gpumathsEnv4096 gpumaths4096
+
+// All size data that a gpumath env could get is included in this type
+// Since these calls will always have the same result,
+// there's no need for synchronization mechanisms when using this data structure
+type sizeData [C.NUM_KERNELS]struct {
+	inputSize     int
+	constantsSize int
+	outputSize    int
+}
+
+// Should the envs belong to the stream pool? probably not
 func chooseEnv(g *cyclic.Group) gpumathsEnv {
 	primeLen := g.GetP().BitLen()
-	len2048 := gpumaths2048{}.getBitLen()
-	len3200 := gpumaths3200{}.getBitLen()
-	len4096 := gpumaths4096{}.getBitLen()
+	len2048 := gpumathsEnv2048.getBitLen()
+	len3200 := gpumathsEnv3200.getBitLen()
+	len4096 := gpumathsEnv4096.getBitLen()
 	if primeLen <= len2048 {
-		return gpumaths2048{}
+		return &gpumathsEnv2048
 	} else if primeLen <= len3200 {
-		return gpumaths3200{}
+		return &gpumathsEnv3200
 	} else if primeLen <= len4096 {
-		return gpumaths4096{}
+		return &gpumathsEnv4096
 	} else {
 		panic(fmt.Sprintf("Prime %s was too big for any available gpumaths environment", g.GetP().Text(16)))
 	}
@@ -139,9 +153,6 @@ func goError(cString *C.char) error {
 }
 
 // Creates streams of a particular size meant to run a particular operation
-// TODO This ideally shouldn't need variants
-//  Maxslots should exist for each size variant
-//  (or just calculate it)
 func createStreams(numStreams int, capacity int) ([]Stream, error) {
 	streamCreateInfo := C.struct_streamCreateInfo{
 		capacity: C.size_t(capacity),
@@ -261,63 +272,119 @@ func (gpumaths4096) download(stream Stream) error {
 	return goError(C.download4096(stream.s))
 }
 
+func (g *gpumaths2048) populateSizeData(kernel C.enum_kernel) {
+	g.sizeData[kernel].inputSize = int(C.getInputSize2048(kernel))
+	// If the result is zero, the kernel is unknown
+	// These panics should never happen unless there's programmer error
+	if g.sizeData[kernel].inputSize == 0 {
+		panic(fmt.Sprintf("Couldn't find input size for kernel %v", kernel))
+	}
+	g.sizeData[kernel].outputSize = int(C.getOutputSize2048(kernel))
+	if g.sizeData[kernel].outputSize == 0 {
+		panic(fmt.Sprintf("Couldn't find output size for kernel %v", kernel))
+	}
+	g.sizeData[kernel].constantsSize = int(C.getConstantsSize2048(kernel))
+	if g.sizeData[kernel].constantsSize == 0 {
+		panic(fmt.Sprintf("Couldn't find constants size for kernel %v", kernel))
+	}
+}
+func (g *gpumaths3200) populateSizeData(kernel C.enum_kernel) {
+	g.sizeData[kernel].inputSize = int(C.getInputSize3200(kernel))
+	// If the result is zero, the kernel is unknown
+	// These panics should never happen unless there's programmer error
+	if g.sizeData[kernel].inputSize == 0 {
+		panic(fmt.Sprintf("Couldn't find input size for kernel %v", kernel))
+	}
+	g.sizeData[kernel].outputSize = int(C.getOutputSize3200(kernel))
+	if g.sizeData[kernel].outputSize == 0 {
+		panic(fmt.Sprintf("Couldn't find output size for kernel %v", kernel))
+	}
+	g.sizeData[kernel].constantsSize = int(C.getConstantsSize3200(kernel))
+	if g.sizeData[kernel].constantsSize == 0 {
+		panic(fmt.Sprintf("Couldn't find constants size for kernel %v", kernel))
+	}
+}
+func (g *gpumaths4096) populateSizeData(kernel C.enum_kernel) {
+	g.sizeData[kernel].inputSize = int(C.getInputSize4096(kernel))
+	// If the result is zero, the kernel is unknown
+	// These panics should never happen unless there's programmer error
+	if g.sizeData[kernel].inputSize == 0 {
+		panic(fmt.Sprintf("Couldn't find input size for kernel %v", kernel))
+	}
+	g.sizeData[kernel].outputSize = int(C.getOutputSize4096(kernel))
+	if g.sizeData[kernel].outputSize == 0 {
+		panic(fmt.Sprintf("Couldn't find output size for kernel %v", kernel))
+	}
+	g.sizeData[kernel].constantsSize = int(C.getConstantsSize4096(kernel))
+	if g.sizeData[kernel].constantsSize == 0 {
+		panic(fmt.Sprintf("Couldn't find constants size for kernel %v", kernel))
+	}
+}
+
 // Four numbers per input
 // Returns size in bytes
-func (gpumaths2048) getInputSize(kernel C.enum_kernel) int {
-	return int(C.getInputSize2048(kernel))
+func (g *gpumaths2048) getInputSize(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].inputSize == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].inputSize
 }
-func (gpumaths3200) getInputSize(kernel C.enum_kernel) int {
-	return int(C.getInputSize3200(kernel))
+func (g *gpumaths3200) getInputSize(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].inputSize == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].inputSize
 }
-func (gpumaths4096) getInputSize(kernel C.enum_kernel) int {
-	return int(C.getInputSize4096(kernel))
-}
-
-// Returns size in bytes
-func (gpumaths2048) getOutputSize(kernel C.enum_kernel) int {
-	return int(C.getOutputSize2048(kernel))
-}
-func (gpumaths3200) getOutputSize(kernel C.enum_kernel) int {
-	return int(C.getOutputSize3200(kernel))
-}
-func (gpumaths4096) getOutputSize(kernel C.enum_kernel) int {
-	return int(C.getOutputSize4096(kernel))
+func (g *gpumaths4096) getInputSize(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].inputSize == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].inputSize
 }
 
 // Returns size in bytes
-func (gpumaths2048) getConstantsSize(kernel C.enum_kernel) int {
-	return int(C.getConstantsSize2048(kernel))
+func (g *gpumaths2048) getOutputSize(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].outputSize == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].outputSize
 }
-func (gpumaths3200) getConstantsSize(kernel C.enum_kernel) int {
-	return int(C.getConstantsSize3200(kernel))
+func (g *gpumaths3200) getOutputSize(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].outputSize == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].outputSize
 }
-func (gpumaths4096) getConstantsSize(kernel C.enum_kernel) int {
-	return int(C.getConstantsSize4096(kernel))
+func (g *gpumaths4096) getOutputSize(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].outputSize == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].outputSize
+}
+
+// Returns size in bytes
+func (g *gpumaths2048) getConstantsSize(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].constantsSize == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].constantsSize
+}
+func (g *gpumaths3200) getConstantsSize(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].constantsSize == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].constantsSize
+}
+func (g *gpumaths4096) getConstantsSize(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].constantsSize == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].constantsSize
 }
 
 // Helper functions for sizing
 // Get the number of slots for an operation
-func (g gpumaths2048) maxSlots(memSize int, op C.enum_kernel) int {
-	constantsSize := g.getConstantsSize(op)
-	slotSize := g.getInputSize(op) + g.getOutputSize(op)
-	memForSlots := memSize - constantsSize
-	if memForSlots < 0 {
-		return 0
-	} else {
-		return memForSlots / slotSize
-	}
-}
-func (g gpumaths3200) maxSlots(memSize int, op C.enum_kernel) int {
-	constantsSize := g.getConstantsSize(op)
-	slotSize := g.getInputSize(op) + g.getOutputSize(op)
-	memForSlots := memSize - constantsSize
-	if memForSlots < 0 {
-		return 0
-	} else {
-		return memForSlots / slotSize
-	}
-}
-func (g gpumaths4096) maxSlots(memSize int, op C.enum_kernel) int {
+func (g *gpumaths2048) maxSlots(memSize int, op C.enum_kernel) int {
 	constantsSize := g.getConstantsSize(op)
 	slotSize := g.getInputSize(op) + g.getOutputSize(op)
 	memForSlots := memSize - constantsSize
@@ -328,17 +395,41 @@ func (g gpumaths4096) maxSlots(memSize int, op C.enum_kernel) int {
 	}
 }
 
-func (g gpumaths2048) streamSizeContaining(numItems int, kernel int) int {
+func (g *gpumaths3200) maxSlots(memSize int, op C.enum_kernel) int {
+	constantsSize := g.getConstantsSize(op)
+	slotSize := g.getInputSize(op) + g.getOutputSize(op)
+	memForSlots := memSize - constantsSize
+	if memForSlots < 0 {
+		return 0
+	} else {
+		return memForSlots / slotSize
+	}
+}
+
+func (g *gpumaths4096) maxSlots(memSize int, op C.enum_kernel) int {
+	constantsSize := g.getConstantsSize(op)
+	slotSize := g.getInputSize(op) + g.getOutputSize(op)
+	memForSlots := memSize - constantsSize
+	if memForSlots < 0 {
+		return 0
+	} else {
+		return memForSlots / slotSize
+	}
+}
+
+func (g *gpumaths2048) streamSizeContaining(numItems int, kernel int) int {
 	return g.getInputSize(C.enum_kernel(kernel))*numItems +
 		g.getOutputSize(C.enum_kernel(kernel))*numItems +
 		g.getConstantsSize(C.enum_kernel(kernel))
 }
-func (g gpumaths3200) streamSizeContaining(numItems int, kernel int) int {
+
+func (g *gpumaths3200) streamSizeContaining(numItems int, kernel int) int {
 	return g.getInputSize(C.enum_kernel(kernel))*numItems +
 		g.getOutputSize(C.enum_kernel(kernel))*numItems +
 		g.getConstantsSize(C.enum_kernel(kernel))
 }
-func (g gpumaths4096) streamSizeContaining(numItems int, kernel int) int {
+
+func (g *gpumaths4096) streamSizeContaining(numItems int, kernel int) int {
 	return g.getInputSize(C.enum_kernel(kernel))*numItems +
 		g.getOutputSize(C.enum_kernel(kernel))*numItems +
 		g.getConstantsSize(C.enum_kernel(kernel))

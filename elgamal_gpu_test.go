@@ -180,7 +180,7 @@ func BenchmarkElGamalCUDA4096_256_streams(b *testing.B) {
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
-	env := gpumaths4096{}
+	env := &gpumathsEnv4096
 	// Use two streams with 32k items per kernel launch
 	numItems := 32768
 

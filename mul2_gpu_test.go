@@ -104,7 +104,7 @@ func BenchmarkMul2GPU4096(b *testing.B) {
 	initRandomIntBuffer(grp, numMuls, y, 43)
 	result := grp.NewIntBuffer(numMuls, grp.NewInt(1))
 
-	numStreams := 6
+	numStreams := 2
 	streamPool, err := NewStreamPool(numStreams, 6553600)
 	if err != nil {
 		b.Fatal(err)

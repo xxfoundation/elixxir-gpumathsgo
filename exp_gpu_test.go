@@ -147,7 +147,7 @@ func BenchmarkExpGPU_32768(b *testing.B) {
 
 func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	g := makeTestGroup4096()
-	env := gpumaths4096{}
+	env := &gpumathsEnv4096
 	numSlots := b.N
 	input := ExpInput{
 		Slots:   make([]ExpInputSlot, numSlots),
@@ -170,7 +170,7 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	// It might be possible to run another benchmark that does two or more
 	// chunks instead, which could be faster if the call could be made
 	// asynchronous (which should be possible)
-	resultChan := Exp(input, gpumaths4096{}, stream[0])
+	resultChan := Exp(input, env, stream[0])
 	result := <-resultChan
 	if result.Err != nil {
 		b.Fatal(result.Err)
@@ -190,7 +190,7 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
-	env := gpumaths4096{}
+	env := &gpumathsEnv4096
 
 	numSlots := b.N
 	streams, err := createStreams(1, env.streamSizeContaining(numSlots,
@@ -209,7 +209,7 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	// It might be possible to run another benchmark that does two or more
 	// chunks instead, which could be faster if the call could be made
 	// asynchronous (which should be possible)
-	resultChan := Exp(input, gpumaths4096{}, streams[0])
+	resultChan := Exp(input, env, streams[0])
 	result := <-resultChan
 	if result.Err != nil {
 		b.Fatal(result.Err)
@@ -230,7 +230,7 @@ func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup2048()
-	env := gpumaths2048{}
+	env := &gpumathsEnv2048
 	// Use two streams with 32k items per kernel launch
 	numItems := 32768
 
@@ -273,7 +273,7 @@ func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
 			}
 		}
 		stream := streamPool.TakeStream()
-		resultChan := Exp(input, gpumaths2048{}, stream)
+		resultChan := Exp(input, env, stream)
 		go func() {
 			result := <-resultChan
 			streamPool.ReturnStream(stream)

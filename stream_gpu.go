@@ -9,6 +9,14 @@
 
 package gpumaths
 
+/*
+#cgo CFLAGS: -I./cgbnBindings/powm -I/opt/xxnetwork/include
+#cgo LDFLAGS: -L/opt/xxnetwork/lib -lpowmosm75 -Wl,-rpath,./lib:/opt/xxnetwork/lib
+#include <powm_odd_export.h>
+#include <stdlib.h>
+#include <string.h>
+*/
+import "C"
 import "unsafe"
 
 // TODO Functions that currently take a stream as unsafe.Pointer should instead have a stream as the receiver
@@ -16,6 +24,7 @@ type Stream struct {
 	// Pointer to stream and associated data, usable only on the C side
 	s       unsafe.Pointer
 	memSize int
+	// TODO On stream creation add byte slice that points to the stream's whole buffer
 }
 
 // Optional improvements:
