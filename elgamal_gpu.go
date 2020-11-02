@@ -56,7 +56,7 @@ var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	// Run kernel on the inputs
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	maxSlotsElGamal := env.maxSlots(stream.memSize, kernelElgamal)
+	maxSlotsElGamal := env.maxSlots(len(stream.cpuData), kernelElgamal)
 	for i := 0; i < numSlots; i += maxSlotsElGamal {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
@@ -106,8 +106,7 @@ func ElGamal(input ElGamalInput, env gpumathsEnv, stream Stream) chan ElGamalRes
 		// TODO clean this up by implementing the
 		// arrangement/dearrangement with reader/writer interfaces
 		//  or smth
-		constants := toSlice(C.getCpuConstants(stream.s),
-			env.getConstantsSize(kernelElgamal))
+		constants := stream.getCpuConstants(env, kernelElgamal)
 		offset := 0
 		bnLengthBytes := env.getByteLen()
 		putInt(constants[offset:offset+bnLengthBytes], input.G,
@@ -119,8 +118,7 @@ func ElGamal(input ElGamalInput, env gpumathsEnv, stream Stream) chan ElGamalRes
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.PublicCypherKey, bnLengthBytes)
 
-		inputs := toSlice(env.getCpuInputs(stream, kernelElgamal),
-			env.getInputSize(kernelElgamal)*numSlots)
+		inputs := stream.getCpuInputs(env, kernelElgamal, numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			putInt(inputs[offset:offset+bnLengthBytes],
@@ -156,7 +154,7 @@ func ElGamal(input ElGamalInput, env gpumathsEnv, stream Stream) chan ElGamalRes
 
 		// Results will be stored in this buffer
 		resultBuf := make([]byte, env.getOutputSize(kernelElgamal)*numSlots)
-		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
+		results := stream.getCpuOutputs(env, kernelElgamal, numSlots)
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
@@ -192,7 +190,7 @@ func ElGamal(input ElGamalInput, env gpumathsEnv, stream Stream) chan ElGamalRes
 
 // Bounds check to make sure that the stream can take all the inputs
 func validateElgamalInput(input ElGamalInput, env gpumathsEnv, stream Stream) {
-	maxSlotsElGamal := env.maxSlots(stream.memSize, kernelElgamal)
+	maxSlotsElGamal := env.maxSlots(len(stream.cpuData), kernelElgamal)
 	if len(input.Slots) > maxSlotsElGamal {
 		// This can only happen because of user error (unlike Cuda
 		// problems), so panic to make the error apparent

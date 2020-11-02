@@ -50,7 +50,7 @@ var StripChunk StripChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
 	env := chooseEnv(g)
-	maxSlotsStrip := env.maxSlots(stream.memSize, kernelStrip)
+	maxSlotsStrip := env.maxSlots(len(stream.cpuData), kernelStrip)
 	for i := 0; i < numSlots; i += maxSlotsStrip {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
@@ -80,7 +80,7 @@ var StripChunk StripChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 
 // Bounds check to make sure that the stream can take all the inputs
 func validateStripInput(input StripInput, env gpumathsEnv, stream Stream) {
-	maxSlotsStrip := env.maxSlots(stream.memSize, kernelStrip)
+	maxSlotsStrip := env.maxSlots(len(stream.cpuData), kernelStrip)
 	if len(input.Slots) > maxSlotsStrip {
 		// This can only happen because of user error (unlike Cuda
 		// problems), so panic to make the error apparent
@@ -111,8 +111,7 @@ func Strip(input StripInput, env gpumathsEnv, stream Stream) chan StripResult {
 		// TODO clean this up by implementing the
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
-		constants := toSlice(C.getCpuConstants(stream.s),
-			int(env.getConstantsSize(kernelStrip)))
+		constants := stream.getCpuConstants(env, kernelStrip)
 		offset := 0
 		// Prime
 		bnLengthBytes := env.getByteLen()
@@ -123,8 +122,7 @@ func Strip(input StripInput, env gpumathsEnv, stream Stream) chan StripResult {
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.PublicCypherKey, bnLengthBytes)
 
-		inputs := toSlice(env.getCpuInputs(stream, kernelStrip),
-			env.getInputSize(kernelStrip)*numSlots)
+		inputs := stream.getCpuInputs(env, kernelStrip, numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			// Put the PrecomputationPayload for this slot
@@ -157,7 +155,7 @@ func Strip(input StripInput, env gpumathsEnv, stream Stream) chan StripResult {
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
 			env.getOutputSize(kernelStrip)*numSlots)
-		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
+		results := stream.getCpuOutputs(env, kernelStrip, numSlots)
 
 		// Wait on things to finish with Cuda
 		err = get(stream)

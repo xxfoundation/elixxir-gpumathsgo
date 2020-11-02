@@ -48,8 +48,6 @@ type gpumathsEnv interface {
 	getConstantsSize(C.enum_kernel) int
 	getOutputSize(C.enum_kernel) int
 	getInputSize(C.enum_kernel) int
-	getCpuOutputs(stream Stream) unsafe.Pointer
-	getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer
 	maxSlots(memSize int, op C.enum_kernel) int
 	streamSizeContaining(numItems int, kernel int) int
 }
@@ -89,26 +87,6 @@ func chooseEnv(g *cyclic.Group) gpumathsEnv {
 	} else {
 		panic(fmt.Sprintf("Prime %s was too big for any available gpumaths environment", g.GetP().Text(16)))
 	}
-}
-
-func (gpumaths2048) getCpuOutputs(stream Stream) unsafe.Pointer {
-	return C.getCpuOutputs2048(stream.s)
-}
-func (gpumaths3200) getCpuOutputs(stream Stream) unsafe.Pointer {
-	return C.getCpuOutputs3200(stream.s)
-}
-func (gpumaths4096) getCpuOutputs(stream Stream) unsafe.Pointer {
-	return C.getCpuOutputs4096(stream.s)
-}
-
-func (gpumaths2048) getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer {
-	return C.getCpuInputs2048(stream.s, kernel)
-}
-func (gpumaths3200) getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer {
-	return C.getCpuInputs3200(stream.s, kernel)
-}
-func (gpumaths4096) getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer {
-	return C.getCpuInputs4096(stream.s, kernel)
 }
 
 func (gpumaths2048) getBitLen() int {
@@ -165,7 +143,7 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 		if createStreamResult.result != nil {
 			streams = append(streams, Stream{
 				s:       createStreamResult.result,
-				memSize: capacity,
+				cpuData: toSlice(createStreamResult.cpuBuf, capacity),
 			})
 		}
 		if createStreamResult.error != nil {
@@ -199,6 +177,7 @@ func destroyStreams(streams []Stream) error {
 // TODO Store the kernel enum for the upload in the stream
 //  That way you don't have to pass that info again for run
 //  There should be no scenario where the stream gets run for a different kernel than the upload
+// Could return byte slices of output as well? perhaps?
 func (gpumaths2048) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
 	uploadError := C.enqueue2048(C.uint(numSlots), stream.s, whichToRun)
 	if uploadError != nil {

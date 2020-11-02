@@ -48,7 +48,7 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
 	env := chooseEnv(g)
-	maxSlotsMul2 := env.maxSlots(stream.memSize, kernelMul2)
+	maxSlotsMul2 := env.maxSlots(len(stream.cpuData), kernelMul2)
 	for i := 0; i < numSlots; i += maxSlotsMul2 {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
@@ -77,7 +77,7 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 
 // Bounds check to make sure that the stream can take all the inputs
 func validateMul2Input(input Mul2Input, env gpumathsEnv, stream Stream) {
-	maxSlotsMul2 := env.maxSlots(stream.memSize, kernelMul2)
+	maxSlotsMul2 := env.maxSlots(len(stream.cpuData), kernelMul2)
 	if len(input.Slots) > maxSlotsMul2 {
 		// This can only happen because of user error (unlike Cuda
 		// problems), so panic to make the error apparent
@@ -115,8 +115,7 @@ func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 		// TODO clean this up by implementing the
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
-		constants := toSlice(C.getCpuConstants(stream.s),
-			env.getConstantsSize(kernelMul2))
+		constants := stream.getCpuConstants(env, kernelMul2)
 		offset := 0
 		// Prime
 		bnLengthBytes := env.getByteLen()
@@ -126,8 +125,7 @@ func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 		//println("time for getting consts slice:",callId, time.Since(getSliceStart))
 		offset += bnLengthBytes
 
-		inputs := toSlice(env.getCpuInputs(stream, kernelMul2),
-			env.getInputSize(kernelMul2)*numSlots)
+		inputs := stream.getCpuInputs(env, kernelMul2, numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			// Put the first operand for this slot
@@ -168,7 +166,7 @@ func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
 			env.getOutputSize(kernelMul2)*numSlots)
-		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
+		results := stream.getCpuOutputs(env, kernelMul2, numSlots)
 
 		// Wait on things to finish with Cuda
 		// Blocks for a long time? Could be a problem?

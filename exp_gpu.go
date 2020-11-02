@@ -52,7 +52,7 @@ var ExpChunk ExpChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
 	env := chooseEnv(g)
-	maxSlotsExp := env.maxSlots(stream.memSize, kernelPowmOdd)
+	maxSlotsExp := env.maxSlots(len(stream.cpuData), kernelPowmOdd)
 	for i := 0; i < numSlots; i += maxSlotsExp {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
@@ -91,15 +91,13 @@ func Exp(input ExpInput, env gpumathsEnv, stream Stream) chan ExpResult {
 		// TODO clean this up by implementing the
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
-		constants := toSlice(C.getCpuConstants(stream.s),
-			env.getConstantsSize(kernelPowmOdd))
+		constants := stream.getCpuConstants(env, kernelPowmOdd)
 		offset := 0
 		bnLengthBytes := env.getByteLen()
 		putInt(constants[offset:offset+bnLengthBytes], input.Modulus,
 			bnLengthBytes)
 
-		inputs := toSlice(env.getCpuInputs(stream, kernelPowmOdd),
-			env.getInputSize(kernelPowmOdd)*numSlots)
+		inputs := stream.getCpuInputs(env, kernelPowmOdd, numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			putInt(inputs[offset:offset+bnLengthBytes],
@@ -128,9 +126,10 @@ func Exp(input ExpInput, env gpumathsEnv, stream Stream) chan ExpResult {
 		}
 
 		// Results will be stored in this buffer
+		// This intermediary copy is necessary because the byte order needs to be reversed
 		resultBuf := make([]byte,
 			env.getOutputSize(kernelPowmOdd)*numSlots)
-		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
+		results := stream.getCpuOutputs(env, kernelPowmOdd, numSlots)
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
@@ -161,7 +160,7 @@ func Exp(input ExpInput, env gpumathsEnv, stream Stream) chan ExpResult {
 
 // Bounds check to make sure that the stream can take all the inputs
 func validateExpInput(input ExpInput, env gpumathsEnv, stream Stream) {
-	maxSlotsExp := env.maxSlots(stream.memSize, kernelPowmOdd)
+	maxSlotsExp := env.maxSlots(len(stream.cpuData), kernelPowmOdd)
 	if len(input.Slots) > maxSlotsExp {
 		// This can only happen because of user error (unlike Cuda
 		// problems), so panic to make the error apparent

@@ -22,9 +22,29 @@ import "unsafe"
 // TODO Functions that currently take a stream as unsafe.Pointer should instead have a stream as the receiver
 type Stream struct {
 	// Pointer to stream and associated data, usable only on the C side
-	s       unsafe.Pointer
-	memSize int
-	// TODO On stream creation add byte slice that points to the stream's whole buffer
+	s unsafe.Pointer
+	// This byte slice contains the entire range of the CPU buffer that this stream can use
+	cpuData []byte
+}
+
+// Return the portion of the stream's CPU memory that's used for outputs
+// Outputs come after inputs and constants
+func (s *Stream) getCpuOutputs(g gpumathsEnv, kernel C.enum_kernel, numItems int) []byte {
+	start := g.getConstantsSize(kernel) + g.getInputSize(kernel)*numItems
+	end := start + g.getOutputSize(kernel)*numItems
+	return s.cpuData[start:end]
+}
+
+// Inputs come after constants and before outputs
+func (s *Stream) getCpuInputs(g gpumathsEnv, kernel C.enum_kernel, numItems int) []byte {
+	start := g.getConstantsSize(kernel)
+	end := start + g.getInputSize(kernel)*numItems
+	return s.cpuData[start:end]
+}
+
+// Constants exist at the very start of the buffer
+func (s *Stream) getCpuConstants(g gpumathsEnv, kernel C.enum_kernel) []byte {
+	return s.cpuData[:g.getConstantsSize(kernel)]
 }
 
 // Optional improvements:

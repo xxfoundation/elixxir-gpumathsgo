@@ -48,7 +48,7 @@ var RevealChunk RevealChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	// Run kernel on the inputs
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	maxSlotsReveal := env.maxSlots(stream.memSize, kernelReveal)
+	maxSlotsReveal := env.maxSlots(len(stream.cpuData), kernelReveal)
 	for i := 0; i < numSlots; i += maxSlotsReveal {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
@@ -78,7 +78,7 @@ var RevealChunk RevealChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 
 // Bounds check to make sure that the stream can take all the inputs
 func validateRevealInput(input RevealInput, env gpumathsEnv, stream Stream) {
-	maxSlotsReveal := env.maxSlots(stream.memSize, kernelReveal)
+	maxSlotsReveal := env.maxSlots(len(stream.cpuData), kernelReveal)
 	if len(input.Slots) > maxSlotsReveal {
 		// This can only happen because of user error (unlike Cuda
 		// problems), so panic to make the error apparent
@@ -107,8 +107,7 @@ func Reveal(input RevealInput, env gpumathsEnv, stream Stream) chan RevealResult
 		// TODO clean this up by implementing the
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
-		constants := toSlice(C.getCpuConstants(stream.s),
-			env.getConstantsSize(kernelReveal))
+		constants := stream.getCpuConstants(env, kernelReveal)
 		offset := 0
 		// Prime
 		bnLengthBytes := env.getByteLen()
@@ -119,8 +118,7 @@ func Reveal(input RevealInput, env gpumathsEnv, stream Stream) chan RevealResult
 		putInt(constants[offset:offset+bnLengthBytes],
 			input.PublicCypherKey, bnLengthBytes)
 
-		inputs := toSlice(env.getCpuInputs(stream, kernelReveal),
-			env.getInputSize(kernelReveal)*numSlots)
+		inputs := stream.getCpuInputs(env, kernelReveal, numSlots)
 		offset = 0
 		for i := 0; i < numSlots; i++ {
 			// Put the CypherPayload for this slot
@@ -149,7 +147,7 @@ func Reveal(input RevealInput, env gpumathsEnv, stream Stream) chan RevealResult
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
 			env.getOutputSize(kernelReveal)*numSlots)
-		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
+		results := stream.getCpuConstants(env, kernelReveal)
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
