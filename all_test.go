@@ -9,7 +9,7 @@ package gpumaths
 
 import (
 	"gitlab.com/elixxir/crypto/cyclic"
-	"gitlab.com/elixxir/crypto/large"
+	"gitlab.com/xx_network/crypto/large"
 )
 
 func makeTestGroup4096() *cyclic.Group {
