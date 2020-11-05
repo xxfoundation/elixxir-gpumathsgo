@@ -52,7 +52,7 @@ build:
     - mkdir -p /opt/xxnetwork/lib/
     - mkdir -p /opt/xxnetwork/include/
     - cat /usr/local/cuda/version.txt
-    - nvidia-smig
+    - nvidia-smi
 
     # Check out appropriate native library version for testing
     - git clone -b release git@gitlab.com:elixxir/gpumathsnative.git
