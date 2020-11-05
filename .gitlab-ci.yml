@@ -41,6 +41,8 @@ stages:
 build:
   stage: build
   image: $DOCKER_IMAGE
+  tags:
+    - gpu
   except:
     - tags
   script:
