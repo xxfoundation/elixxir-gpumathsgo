@@ -45,13 +45,14 @@ build:
     - tags
   script:
     # Set up dependencies
+    - go clean --modcache --c
     - go mod tidy
     - go build ./...
     # Setup, diagnostics
     - mkdir -p /opt/xxnetwork/lib/
     - mkdir -p /opt/xxnetwork/include/
     - cat /usr/local/cuda/version.txt
-    - nvidia-smi
+    - nvidia-smig
 
     # Check out appropriate native library version for testing
     - git clone -b release git@gitlab.com:elixxir/gpumathsnative.git
