@@ -27,40 +27,26 @@ before_script:
   - chmod 700 ~/.ssh
   - ssh-keyscan -t rsa gitlab.com > ~/.ssh/known_hosts
   - git config --global url."git@gitlab.com:".insteadOf "https://gitlab.com/"
-  - export GOFLAGS=-mod=vendor
   - export PATH=$HOME/go/bin:$PATH
-  - export GOPRIVATE=gitlab.com/elixxir/*,gitlab.com/xx_network/*
+  - export GOPRIVATE="*gitlab.com/elixxir/*,*gitlab.com/xx_network/*"
 
 stages:
-  - setup
-  - test
   - build
   - tag
   - trigger_server
   - trigger_release_server
 
-setup:
-  stage: setup
-  image: $DOCKER_IMAGE
-  except:
-    - tags
-  script:
-    - go mod vendor -v
-    - go build ./...
-    - go mod tidy
-  artifacts:
-    paths:
-     - vendor/
-     - lib/
 
-test:
-  stage: test
+
+build:
+  stage: build
   image: $DOCKER_IMAGE
-  tags:
-    - gpu
   except:
     - tags
   script:
+    # Set up dependencies
+    - go mod tidy
+    - go build ./...
     # Setup, diagnostics
     - mkdir -p /opt/xxnetwork/lib/
     - mkdir -p /opt/xxnetwork/include/
@@ -87,8 +73,6 @@ test:
     - cd ../../..
 
     # Run tests
-    - apt-get update
-    - apt-get install bc -y
     - mkdir -p testdata
     # Test coverage
     - go test -v -tags gpu -coverprofile=testdata/coverage.out -covermode atomic -coverpkg ./... -race ./...
@@ -105,21 +89,15 @@ test:
     - go tool cover -func=testdata/coverage.out | grep "total:" | awk '{print $3}' | sed 's/\%//g' > testdata/coverage-percentage.txt
     - export CODE_CHECK=$(echo "$(cat testdata/coverage-percentage.txt) >= $MIN_CODE_COVERAGE" | bc -l)
     - (if [ "$CODE_CHECK" == "1" ]; then echo "Minimum coverage of $MIN_CODE_COVERAGE succeeded"; else echo "Minimum coverage of $MIN_CODE_COVERAGE failed"; exit 1; fi);
-  artifacts:
-    paths:
-      - testdata/
 
-build:
-  stage: build
-  image: $DOCKER_IMAGE
-  except:
-    - tags
-  script:
     - mkdir -p release
     - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags '-w -s' ./...
   artifacts:
     paths:
-     - release/
+      - vendor/
+      - lib/
+      - testdata/
+      - release/
 
 # TODO(?): have server pull in the latest from release/master automatically for this pipeline, if possible
 trigger_server:
