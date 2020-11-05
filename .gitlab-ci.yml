@@ -45,7 +45,7 @@ build:
     - tags
   script:
     # Set up dependencies
-    - go clean --modcache --c
+    - go clean --modcache --cache
     - go mod tidy
     - go build ./...
     # Setup, diagnostics
