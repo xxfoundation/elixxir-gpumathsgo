@@ -17,7 +17,10 @@ package gpumaths
 #include <string.h>
 */
 import "C"
-import "unsafe"
+import (
+	"time"
+	"unsafe"
+)
 
 // TODO Functions that currently take a stream as unsafe.Pointer should instead have a stream as the receiver
 type Stream struct {
@@ -25,6 +28,9 @@ type Stream struct {
 	s unsafe.Pointer
 	// This byte slice contains the entire range of the CPU buffer that this stream can use
 	cpuData []byte
+
+	// TODO move to env, track elapsed time PER ITEM and PER KERNEL
+	elapsedTimeMovingAverage time.Duration
 }
 
 // Return the portion of the stream's CPU memory that's used for outputs

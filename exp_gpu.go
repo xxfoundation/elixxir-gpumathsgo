@@ -132,7 +132,7 @@ func Exp(input ExpInput, env gpumathsEnv, stream Stream) chan ExpResult {
 		results := stream.getCpuOutputs(env, kernelPowmOdd, numSlots)
 
 		// Wait on things to finish with Cuda
-		err = get(stream)
+		_, err = get(stream)
 		if err != nil {
 			resultChan <- ExpResult{Err: err}
 			return

@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"gitlab.com/elixxir/crypto/cyclic"
 	"reflect"
+	"time"
 	"unsafe"
 )
 
@@ -117,6 +118,13 @@ func toSlice(pointer unsafe.Pointer, size int) []byte {
 			Len: size, Cap: size}))
 }
 
+func toSliceOfWords(pointer unsafe.Pointer, size int) []uint32 {
+	return *(*[]uint32)(unsafe.Pointer(
+		&reflect.SliceHeader{Data: uintptr(pointer),
+			// size may be different - 4 times less the size?
+			Len: size, Cap: size}))
+}
+
 // Load the shared library and return any errors
 // Copies a C string into a Go error and frees the C string
 // TODO is this slow?
@@ -139,6 +147,8 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 	streams := make([]Stream, 0, numStreams)
 
 	for i := 0; i < numStreams; i++ {
+		// We need to free this createStreamResult, right?
+		// Or, it might be possible to return the struct by value instead.
 		createStreamResult := C.createStream(streamCreateInfo)
 		if createStreamResult.result != nil {
 			streams = append(streams, Stream{
@@ -151,8 +161,11 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 			for j := 0; j < len(streams); j++ {
 				C.destroyStream(streams[j].s)
 			}
-			return nil, goError(createStreamResult.error)
+			err := goError(createStreamResult.error)
+			C.free(unsafe.Pointer(createStreamResult))
+			return nil, err
 		}
+		C.free(unsafe.Pointer(createStreamResult))
 	}
 
 	return streams, nil
@@ -416,12 +429,13 @@ func (g *gpumaths4096) streamSizeContaining(numItems int, kernel int) int {
 
 // Wait for this stream's download to finish and return a pointer to the results
 // This also checks the CGBN error report (presumably this is where things should be checked, if not now, then in the future, to see whether they're in the group or not. However this may not(?) be doable if everything is in Montgomery space.)
-// TODO Copying results to Golang should no longer be the responsibility of this method
-//  Instead, this can be done in the exported integration method, and it can be copied from
-//  the results buffer directly. The length of the results buffer could be another
-//  field of the struct as well, although it would be better to allocate that earlier.
-func get(stream Stream) error {
-	return goError(C.getResults(stream.s))
+// TODO wait/sleep before getting?
+func get(stream Stream) (time.Duration, error) {
+	getResult := C.getResults(stream.s)
+	err := goError(getResult.error)
+	C.free(unsafe.Pointer(getResult))
+	duration := time.Duration(float32(time.Millisecond) * float32(getResult.elapsedTime))
+	return duration, err
 }
 
 // get2 queries the stream to see if the event has completed

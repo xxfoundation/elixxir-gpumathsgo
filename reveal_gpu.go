@@ -150,7 +150,7 @@ func Reveal(input RevealInput, env gpumathsEnv, stream Stream) chan RevealResult
 		results := stream.getCpuConstants(env, kernelReveal)
 
 		// Wait on things to finish with Cuda
-		err = get(stream)
+		_, err = get(stream)
 		if err != nil {
 			resultChan <- RevealResult{Err: err}
 			return

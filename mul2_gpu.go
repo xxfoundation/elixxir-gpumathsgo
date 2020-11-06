@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"gitlab.com/elixxir/crypto/cyclic"
 	"log"
+	"math/rand"
+	"time"
 )
 
 // mul2_gpu.go contains the CUDA ops for the Mul2 operation. Mul2(...)
@@ -97,17 +99,22 @@ func validateMul2Input(input Mul2Input, env gpumathsEnv, stream Stream) {
 // TODO validate BN length in code (i.e. pick kernel variants based on bn
 // length)
 func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
-	//callId := rand.Intn(9999)
-	//start := time.Now()
-	//println("starting mul2 call", callId, "with", len(input.Slots), "slots at", start.String())
-	// Return the result later, when the GPU job finishes
+	debugPrint := true
+	callId := rand.Intn(9999)
+	start := time.Now()
+	if debugPrint {
+		println("starting mul2 call", callId, "with", len(input.Slots), "slots at", start.String())
+	}
+	start = time.Now()
+	//Return the result later, when the GPU job finishes
 	resultChan := make(chan Mul2Result, 1)
 	go func() {
-		// Validation took a long time too?
-		// It's a cgo call, but we could cache it like before...
+		// This doesn't take long at all
 		validateMul2Input(input, env, stream)
-		//println("Call", callId, "post validation", time.Since(start))
-		//start = time.Now()
+		if debugPrint {
+			println("Call", callId, "post validation", time.Since(start))
+			start = time.Now()
+		}
 
 		// Arrange memory into stream buffers
 		numSlots := len(input.Slots)
@@ -137,13 +144,18 @@ func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 				input.Slots[i].Y, bnLengthBytes)
 			offset += bnLengthBytes
 		}
-		//println("Call", callId, "post arrangement", time.Since(start))
-		//start = time.Now()
+		if debugPrint {
+			println("Call", callId, "post input arrangement", time.Since(start))
+			start = time.Now()
+		}
 
 		// Upload, run, wait for download
 		err := env.enqueue(stream, kernelMul2, numSlots)
-		//println("Call", callId, "post put", time.Since(start))
-		//start = time.Now()
+		// Enqueue could memset outputs to zero before returning
+		if debugPrint {
+			println("Call", callId, "post put", time.Since(start))
+			start = time.Now()
+		}
 		if err != nil {
 			resultChan <- Mul2Result{Err: err}
 			return
@@ -174,9 +186,43 @@ func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 		//for getErr := get2(stream); getErr != nil; getErr = get2(stream) {
 		//	time.Sleep(200*time.Microsecond)
 		//}
-		err = get(stream)
-		//println("Call", callId, "post get", time.Since(start))
-		//start = time.Now()
+		// TODO estimate sleep fraction based on variance?
+		// probably only do that if this shows perf improvement...
+		//time.Sleep(time.Duration(float32(stream.elapsedTimeMovingAverage) * 25.5))
+		// Get elapsed time that the kernel ran
+		//var elapsedTime time.Duration
+		//elapsedTime, err = get(stream)
+		//if stream.elapsedTimeMovingAverage != 0 {
+		//	Fold elapsed time into moving average
+		//stream.elapsedTimeMovingAverage = stream.elapsedTimeMovingAverage*3/4 + elapsedTime/4
+		//} else {
+		//	stream.elapsedTimeMovingAverage = elapsedTime
+		//}
+
+		_, err = get(stream)
+
+		// NOTE this did not work
+		// Trying a different strategy...
+		// Instead of get(), let's simply read the memory until certain areas are nonzero!
+		// This DOES NOT guarantee all results have been copied to the buffer
+		// just that some of them may exist there
+		//loop:
+		//for {
+		//	for i := range results {
+		//		if results[i] != 0 {
+		//			We have some results!!!
+		//break loop
+		//}
+		//}
+		//Good to sleep?
+		//time.Sleep(100*time.Nanosecond)
+		//}
+		//
+
+		if debugPrint {
+			println("Call", callId, "post get", time.Since(start))
+			start = time.Now()
+		}
 		if err != nil {
 			resultChan <- Mul2Result{Err: err}
 			return
@@ -197,7 +243,10 @@ func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
 				results[offset:end], bnLengthBytes)
 			offset += bnLengthBytes
 		}
-		//println("Call", callId, "post arrangement", time.Since(start))
+
+		if debugPrint {
+			println("Call", callId, "post output arrangement", time.Since(start))
+		}
 
 		resultChan <- result
 	}()

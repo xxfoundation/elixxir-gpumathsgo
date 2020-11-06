@@ -158,7 +158,7 @@ func Strip(input StripInput, env gpumathsEnv, stream Stream) chan StripResult {
 		results := stream.getCpuOutputs(env, kernelStrip, numSlots)
 
 		// Wait on things to finish with Cuda
-		err = get(stream)
+		_, err = get(stream)
 		if err != nil {
 			resultChan <- StripResult{Err: err}
 			return

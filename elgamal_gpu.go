@@ -157,7 +157,7 @@ func ElGamal(input ElGamalInput, env gpumathsEnv, stream Stream) chan ElGamalRes
 		results := stream.getCpuOutputs(env, kernelElgamal, numSlots)
 
 		// Wait on things to finish with Cuda
-		err = get(stream)
+		_, err = get(stream)
 		if err != nil {
 			resultChan <- ElGamalResult{Err: err}
 			return
