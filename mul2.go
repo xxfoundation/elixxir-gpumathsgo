@@ -13,29 +13,29 @@ import "gitlab.com/elixxir/crypto/cyclic"
 // operation against the GPU. The actual GPU call is in mul2_gpu.go and is
 // marked to require `-tags cuda` in your build.
 
-// Mul2 needs two numbers to multiply together, modulo a prime.
-type Mul2InputSlot struct {
-	X []byte
-	Y []byte
-}
-
-// Mul2Input uses each individual slot and includes the Prime
-type Mul2Input struct {
-	Slots []Mul2InputSlot
-	Prime []byte
-}
-
-// Mul2ResultSlot returns the multiplication result
-type Mul2ResultSlot struct {
-	Result []byte
-}
-
-// Mul2Result returns results for each slot or an error
-type Mul2Result struct {
-	Slots []Mul2ResultSlot
-	Err   error
-}
-
+//// Mul2 needs two numbers to multiply together, modulo a prime.
+//type Mul2InputSlot struct {
+//	X []byte
+//	Y []byte
+//}
+//
+//// Mul2Input uses each individual slot and includes the Prime
+//type Mul2Input struct {
+//	Slots []Mul2InputSlot
+//	Prime []byte
+//}
+//
+//// Mul2ResultSlot returns the multiplication result
+//type Mul2ResultSlot struct {
+//	Result []byte
+//}
+//
+//// Mul2Result returns results for each slot or an error
+//type Mul2Result struct {
+//	Slots []Mul2ResultSlot
+//	Err   error
+//}
+//
 // Prototype Definition
 
 // Mul2ChunkPrototype defines the function type for running the Mul2

@@ -18,6 +18,7 @@ package gpumaths
 */
 import "C"
 import (
+	"gitlab.com/xx_network/crypto/large"
 	"time"
 	"unsafe"
 )
@@ -28,6 +29,8 @@ type Stream struct {
 	s unsafe.Pointer
 	// This byte slice contains the entire range of the CPU buffer that this stream can use
 	cpuData []byte
+	// Same data but in words!
+	cpuDataWords large.Bits
 
 	// TODO move to env, track elapsed time PER ITEM and PER KERNEL
 	elapsedTimeMovingAverage time.Duration
@@ -40,6 +43,11 @@ func (s *Stream) getCpuOutputs(g gpumathsEnv, kernel C.enum_kernel, numItems int
 	end := start + g.getOutputSize(kernel)*numItems
 	return s.cpuData[start:end]
 }
+func (s *Stream) getCpuOutputsWords(g gpumathsEnv, kernel C.enum_kernel, numItems int) large.Bits {
+	start := g.getConstantsSizeWords(kernel) + g.getInputSizeWords(kernel)*numItems
+	end := start + g.getOutputSizeWords(kernel)*numItems
+	return s.cpuDataWords[start:end]
+}
 
 // Inputs come after constants and before outputs
 func (s *Stream) getCpuInputs(g gpumathsEnv, kernel C.enum_kernel, numItems int) []byte {
@@ -47,10 +55,19 @@ func (s *Stream) getCpuInputs(g gpumathsEnv, kernel C.enum_kernel, numItems int)
 	end := start + g.getInputSize(kernel)*numItems
 	return s.cpuData[start:end]
 }
+func (s *Stream) getCpuInputsWords(g gpumathsEnv, kernel C.enum_kernel, numItems int) large.Bits {
+	start := g.getConstantsSizeWords(kernel)
+	end := start + g.getInputSizeWords(kernel)*numItems
+	return s.cpuDataWords[start:end]
+}
 
 // Constants exist at the very start of the buffer
 func (s *Stream) getCpuConstants(g gpumathsEnv, kernel C.enum_kernel) []byte {
 	return s.cpuData[:g.getConstantsSize(kernel)]
+}
+
+func (s *Stream) getCpuConstantsWords(g gpumathsEnv, kernel C.enum_kernel) large.Bits {
+	return s.cpuDataWords[:g.getConstantsSizeWords(kernel)/int(unsafe.Sizeof(s.cpuDataWords[0]))]
 }
 
 // Optional improvements:

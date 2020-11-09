@@ -33,6 +33,8 @@ import (
 	"errors"
 	"fmt"
 	"gitlab.com/elixxir/crypto/cyclic"
+	"gitlab.com/xx_network/crypto/large"
+	"math/big"
 	"reflect"
 	"time"
 	"unsafe"
@@ -46,9 +48,15 @@ type gpumathsEnv interface {
 	put(stream Stream, whichToRun C.enum_kernel, numSlots int) error
 	getBitLen() int
 	getByteLen() int
+	getWordLen() int
 	getConstantsSize(C.enum_kernel) int
 	getOutputSize(C.enum_kernel) int
 	getInputSize(C.enum_kernel) int
+	// Get the number of words (in large.Bits type) that the constants for this
+	// kernel take up
+	getConstantsSizeWords(C.enum_kernel) int
+	getOutputSizeWords(C.enum_kernel) int
+	getInputSizeWords(C.enum_kernel) int
 	maxSlots(memSize int, op C.enum_kernel) int
 	streamSizeContaining(numItems int, kernel int) int
 }
@@ -68,9 +76,12 @@ var gpumathsEnv4096 gpumaths4096
 // Since these calls will always have the same result,
 // there's no need for synchronization mechanisms when using this data structure
 type sizeData [C.NUM_KERNELS]struct {
-	inputSize     int
-	constantsSize int
-	outputSize    int
+	inputSize          int
+	constantsSize      int
+	outputSize         int
+	inputSizeWords     int
+	constantsSizeWords int
+	outputSizeWords    int
 }
 
 // Should the envs belong to the stream pool? probably not
@@ -96,17 +107,29 @@ func (gpumaths2048) getBitLen() int {
 func (gpumaths2048) getByteLen() int {
 	return 2048 / 8
 }
+func (g gpumaths2048) getWordLen() int {
+	// TODO large.Word?
+	return g.getByteLen() / int(unsafe.Sizeof(big.Word(0)))
+}
 func (gpumaths3200) getBitLen() int {
 	return 3200
 }
 func (gpumaths3200) getByteLen() int {
 	return 3200 / 8
 }
+func (g gpumaths3200) getWordLen() int {
+	// TODO large.Word?
+	return g.getByteLen() / int(unsafe.Sizeof(big.Word(0)))
+}
 func (gpumaths4096) getBitLen() int {
 	return 4096
 }
 func (gpumaths4096) getByteLen() int {
 	return 4096 / 8
+}
+func (g gpumaths4096) getWordLen() int {
+	// TODO large.Word?
+	return g.getByteLen() / int(unsafe.Sizeof(big.Word(0)))
 }
 
 // Create byte slice viewing memory at a certain memory address with a
@@ -118,10 +141,9 @@ func toSlice(pointer unsafe.Pointer, size int) []byte {
 			Len: size, Cap: size}))
 }
 
-func toSliceOfWords(pointer unsafe.Pointer, size int) []uint32 {
-	return *(*[]uint32)(unsafe.Pointer(
+func toSliceOfWords(pointer unsafe.Pointer, size int) large.Bits {
+	return *(*large.Bits)(unsafe.Pointer(
 		&reflect.SliceHeader{Data: uintptr(pointer),
-			// size may be different - 4 times less the size?
 			Len: size, Cap: size}))
 }
 
@@ -151,9 +173,11 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 		// Or, it might be possible to return the struct by value instead.
 		createStreamResult := C.createStream(streamCreateInfo)
 		if createStreamResult.result != nil {
+			sizeofOperand := make(large.Bits, 1)
 			streams = append(streams, Stream{
-				s:       createStreamResult.result,
-				cpuData: toSlice(createStreamResult.cpuBuf, capacity),
+				s:            createStreamResult.result,
+				cpuData:      toSlice(createStreamResult.cpuBuf, capacity),
+				cpuDataWords: toSliceOfWords(createStreamResult.cpuBuf, int(uintptr(capacity)/unsafe.Sizeof(sizeofOperand[0]))),
 			})
 		}
 		if createStreamResult.error != nil {
@@ -264,6 +288,16 @@ func (gpumaths4096) download(stream Stream) error {
 	return goError(C.download4096(stream.s))
 }
 
+// Populate the sizes of constants, inputs, outputs in words based on the byte sizes
+// The byte sizes must be evenly divisible by the word size!
+func (s *sizeData) populateWordSizes(kernel C.enum_kernel) {
+	sizeOfOperand := make(large.Bits, 1)
+	sizeOfWord := int(unsafe.Sizeof(sizeOfOperand[0]))
+	s[kernel].inputSizeWords = s[kernel].inputSize / sizeOfWord
+	s[kernel].constantsSizeWords = s[kernel].constantsSize / sizeOfWord
+	s[kernel].outputSizeWords = s[kernel].outputSize / sizeOfWord
+}
+
 func (g *gpumaths2048) populateSizeData(kernel C.enum_kernel) {
 	g.sizeData[kernel].inputSize = int(C.getInputSize2048(kernel))
 	// If the result is zero, the kernel is unknown
@@ -279,6 +313,7 @@ func (g *gpumaths2048) populateSizeData(kernel C.enum_kernel) {
 	if g.sizeData[kernel].constantsSize == 0 {
 		panic(fmt.Sprintf("Couldn't find constants size for kernel %v", kernel))
 	}
+	g.sizeData.populateWordSizes(kernel)
 }
 func (g *gpumaths3200) populateSizeData(kernel C.enum_kernel) {
 	g.sizeData[kernel].inputSize = int(C.getInputSize3200(kernel))
@@ -295,6 +330,7 @@ func (g *gpumaths3200) populateSizeData(kernel C.enum_kernel) {
 	if g.sizeData[kernel].constantsSize == 0 {
 		panic(fmt.Sprintf("Couldn't find constants size for kernel %v", kernel))
 	}
+	g.sizeData.populateWordSizes(kernel)
 }
 func (g *gpumaths4096) populateSizeData(kernel C.enum_kernel) {
 	g.sizeData[kernel].inputSize = int(C.getInputSize4096(kernel))
@@ -311,6 +347,7 @@ func (g *gpumaths4096) populateSizeData(kernel C.enum_kernel) {
 	if g.sizeData[kernel].constantsSize == 0 {
 		panic(fmt.Sprintf("Couldn't find constants size for kernel %v", kernel))
 	}
+	g.sizeData.populateWordSizes(kernel)
 }
 
 // Four numbers per input
@@ -334,6 +371,28 @@ func (g *gpumaths4096) getInputSize(kernel C.enum_kernel) int {
 	return g.sizeData[kernel].inputSize
 }
 
+// Returns size in words
+func (g *gpumaths2048) getInputSizeWords(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].inputSizeWords == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].inputSizeWords
+}
+func (g *gpumaths3200) getInputSizeWords(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].inputSizeWords == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].inputSizeWords
+}
+
+// Might be able to refactor this for less repetition...
+func (g *gpumaths4096) getInputSizeWords(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].inputSizeWords == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].inputSizeWords
+}
+
 // Returns size in bytes
 func (g *gpumaths2048) getOutputSize(kernel C.enum_kernel) int {
 	if g.sizeData[kernel].outputSize == 0 {
@@ -354,6 +413,26 @@ func (g *gpumaths4096) getOutputSize(kernel C.enum_kernel) int {
 	return g.sizeData[kernel].outputSize
 }
 
+// Returns size in words
+func (g *gpumaths2048) getOutputSizeWords(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].outputSizeWords == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].outputSizeWords
+}
+func (g *gpumaths3200) getOutputSizeWords(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].outputSizeWords == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].outputSizeWords
+}
+func (g *gpumaths4096) getOutputSizeWords(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].outputSizeWords == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].outputSizeWords
+}
+
 // Returns size in bytes
 func (g *gpumaths2048) getConstantsSize(kernel C.enum_kernel) int {
 	if g.sizeData[kernel].constantsSize == 0 {
@@ -372,6 +451,24 @@ func (g *gpumaths4096) getConstantsSize(kernel C.enum_kernel) int {
 		g.populateSizeData(kernel)
 	}
 	return g.sizeData[kernel].constantsSize
+}
+func (g *gpumaths2048) getConstantsSizeWords(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].constantsSizeWords == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].constantsSizeWords
+}
+func (g *gpumaths3200) getConstantsSizeWords(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].constantsSizeWords == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].constantsSizeWords
+}
+func (g *gpumaths4096) getConstantsSizeWords(kernel C.enum_kernel) int {
+	if g.sizeData[kernel].constantsSizeWords == 0 {
+		g.populateSizeData(kernel)
+	}
+	return g.sizeData[kernel].constantsSizeWords
 }
 
 // Helper functions for sizing
