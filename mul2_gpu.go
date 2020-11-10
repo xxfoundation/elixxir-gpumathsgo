@@ -16,6 +16,7 @@ package gpumaths
 import "C"
 import (
 	"gitlab.com/elixxir/crypto/cyclic"
+	"gitlab.com/xx_network/crypto/large"
 	"math/rand"
 	"time"
 )
@@ -32,8 +33,6 @@ const kernelMul2 = C.KERNEL_MUL2
 var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	x *cyclic.IntBuffer, y *cyclic.IntBuffer, results *cyclic.IntBuffer) error {
 	// Populate Mul2 inputs
-	println("called")
-	defer func() { println("deferred return") }()
 	numSlots := uint32(x.Len())
 
 	// Run kernel on the inputs
@@ -69,7 +68,7 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 // length)
 // puts output in results int buffer
 func Mul2(g *cyclic.Group, x *cyclic.IntBuffer, y *cyclic.IntBuffer, results *cyclic.IntBuffer, env gpumathsEnv, stream Stream) chan error {
-	debugPrint := true
+	debugPrint := false
 	callId := rand.Intn(9999)
 	start := time.Now()
 	//if debugPrint {
@@ -88,9 +87,11 @@ func Mul2(g *cyclic.Group, x *cyclic.IntBuffer, y *cyclic.IntBuffer, results *cy
 		constants := stream.getCpuConstantsWords(env, kernelMul2)
 		// TODO right pad with zeroes if there isn't enough space
 		copy(constants, g.GetP().Bits())
+		//fmt.Printf("%x %v\n", constants, len(constants))
 		offset := 0
 		// Prime
 		bnLengthWords := env.getWordLen()
+		//panic(bnLengthWords)
 		//getSliceStart := time.Now()
 		//println("time for getting consts slice:",callId, time.Since(getSliceStart))
 		offset += bnLengthWords
@@ -192,9 +193,10 @@ func Mul2(g *cyclic.Group, x *cyclic.IntBuffer, y *cyclic.IntBuffer, results *cy
 		offset = 0
 		for i := uint32(0); i < numSlots; i++ {
 			// Output the computed result into each slot
-			end := offset + bnLengthWords
-			// Does this copy? (it should copy)
-			g.SetBits(results.Get(i), outputs[offset:end])
+			thisOutput := outputs[offset : offset+bnLengthWords]
+			thisOutputCopy := make(large.Bits, len(thisOutput))
+			copy(thisOutputCopy, thisOutput)
+			g.SetBits(results.Get(i), thisOutputCopy)
 			offset += bnLengthWords
 		}
 

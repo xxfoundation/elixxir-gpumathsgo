@@ -67,7 +67,7 @@ func (s *Stream) getCpuConstants(g gpumathsEnv, kernel C.enum_kernel) []byte {
 }
 
 func (s *Stream) getCpuConstantsWords(g gpumathsEnv, kernel C.enum_kernel) large.Bits {
-	return s.cpuDataWords[:g.getConstantsSizeWords(kernel)/int(unsafe.Sizeof(s.cpuDataWords[0]))]
+	return s.cpuDataWords[:g.getConstantsSizeWords(kernel)]
 }
 
 // Optional improvements:

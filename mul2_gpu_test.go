@@ -39,7 +39,7 @@ func mul2GPU(t testing.TB, streamPool *StreamPool,
 
 // Runs precomp decrypt test with GPU stream pool and graphs
 func TestMul2(t *testing.T) {
-	batchSize := uint32(1024)
+	batchSize := uint32(217940)
 	grp := initMul2()
 
 	// Generate the payload buffers
@@ -111,7 +111,7 @@ func BenchmarkMul2GPU4096(b *testing.B) {
 	}
 	b.ResetTimer()
 	// Set size of gpu jobs
-	const gpuJobSize = 128
+	const gpuJobSize = 2048
 	chunkStart := uint32(0)
 	var chunkStartLock sync.Mutex
 	var wg sync.WaitGroup
@@ -137,7 +137,7 @@ func BenchmarkMul2GPU4096(b *testing.B) {
 				ySub := y.GetSubBuffer(thisChunkStart, thisChunkEnd)
 				err := Mul2Chunk(streamPool, grp, resultSub, xSub, ySub)
 				if err != nil {
-					b.Fatal(err)
+					b.Error(err)
 				}
 			}
 			wg.Done()

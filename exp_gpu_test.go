@@ -296,3 +296,76 @@ func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
 		b.Fatal(err)
 	}
 }
+
+func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
+	const xBitLen = 4096
+	const xByteLen = xBitLen / 8
+	const yBitLen = 256
+	const yByteLen = yBitLen / 8
+	g := makeTestGroup4096()
+	env := &gpumaths4096{}
+	// Use two streams with 32k items per kernel launch
+	numItems := 32768
+
+	streamPool, err := NewStreamPool(2, env.streamSizeContaining(numItems,
+		kernelPowmOdd))
+	if err != nil {
+		b.Fatal(err)
+	}
+	// Using prng because the cryptographically secure RNG used by the
+	// group is too slow to feed the GPU
+	rng := rand.New(rand.NewSource(5))
+	b.ResetTimer()
+	remainingItems := b.N
+	for i := 0; i < b.N; i += numItems {
+		// If part of a chunk remains, only upload that part
+		remainingItems = b.N - i
+		numItemsToUpload := numItems
+		if remainingItems < numItems {
+			numItemsToUpload = remainingItems
+		}
+		input := ExpInput{
+			Slots:   make([]ExpInputSlot, numItemsToUpload),
+			Modulus: g.GetPBytes(),
+		}
+		// Hopefully random number generation doesn't bottleneck things!
+		for j := 0; j < numItemsToUpload; j++ {
+			// Unfortunately, we can't just generate things using
+			// the group, because it's too slow
+			base := make([]byte, xByteLen)
+			exponent := make([]byte, yByteLen)
+			rng.Read(base)
+			rng.Read(exponent)
+			for !g.BytesInside(base, exponent) {
+				rng.Read(base)
+				rng.Read(exponent)
+			}
+			input.Slots[j] = ExpInputSlot{
+				Base:     base,
+				Exponent: exponent,
+			}
+		}
+		stream := streamPool.TakeStream()
+		resultChan := Exp(input, env, stream)
+		go func() {
+			result := <-resultChan
+			streamPool.ReturnStream(stream)
+			if result.Err != nil {
+				b.Fatal(result.Err)
+			}
+		}()
+	}
+	// Empty the pool to make sure results have all been downloaded
+	streamPool.TakeStream()
+	streamPool.TakeStream()
+	b.StopTimer()
+	err = streamPool.Destroy()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	err = resetDevice()
+	if err != nil {
+		b.Fatal(err)
+	}
+}

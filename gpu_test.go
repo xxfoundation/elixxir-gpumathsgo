@@ -14,8 +14,8 @@ package gpumaths
 import (
 	"gitlab.com/elixxir/crypto/cryptops"
 	"gitlab.com/elixxir/crypto/cyclic"
-	"gitlab.com/elixxir/crypto/large"
 	"gitlab.com/xx_network/crypto/csprng"
+	"gitlab.com/xx_network/crypto/large"
 	"math/rand"
 )
 
