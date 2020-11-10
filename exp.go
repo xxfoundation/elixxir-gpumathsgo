@@ -42,5 +42,5 @@ func (ExpChunkPrototype) GetName() string {
 
 // GetInputSize is the size of each chunk for this op
 func (ExpChunkPrototype) GetInputSize() uint32 {
-	return 256
+	return 64
 }

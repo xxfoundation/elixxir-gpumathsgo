@@ -46,7 +46,7 @@ type RevealChunkPrototype func(p *StreamPool, g *cyclic.Group,
 
 // GetInputSize is how big chunk sizes should be to run the reveal operation
 func (RevealChunkPrototype) GetInputSize() uint32 {
-	return 128
+	return 64
 }
 
 // GetName return the name of the RevealChunk operation
