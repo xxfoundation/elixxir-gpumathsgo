@@ -49,7 +49,7 @@ type ElGamalChunkPrototype func(p *StreamPool, g *cyclic.Group,
 
 // GetInputSize returns the chunk size for the op
 func (ElGamalChunkPrototype) GetInputSize() uint32 {
-	return 128
+	return 64
 }
 
 // GetName returns the name of the op (ElGamalChunk)
