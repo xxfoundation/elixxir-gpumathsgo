@@ -20,10 +20,7 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	return errors.New(NoGpuErrStr)
 }
 
-// Mul2 is an empty stub that returns an error when called.
-//func Mul2(g *cyclic.Group, x, y, result *cyclic.IntBuffer, env gpumathsEnv, stream Stream) chan error {
-// Return the result later, when the GPU job finishes
-//resultChan := make(chan error, 1)
-//resultChan <- errors.New(NoGpuErrStr)
-//return resultChan
-//}
+var Mul2Slice Mul2SlicePrototype = func(p *StreamPool, g *cyclic.Group,
+	x *cyclic.IntBuffer, y, result []*cyclic.Int) error {
+	return errors.New(NoGpuErrStr)
+}
