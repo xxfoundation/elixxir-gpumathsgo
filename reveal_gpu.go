@@ -147,7 +147,7 @@ func Reveal(input RevealInput, env gpumathsEnv, stream Stream) chan RevealResult
 		// Results will be stored in this buffer
 		resultBuf := make([]byte,
 			env.getOutputSize(kernelReveal)*numSlots)
-		results := stream.getCpuConstants(env, kernelReveal)
+		results := stream.getCpuOutputs(env, kernelReveal, numSlots)
 
 		// Wait on things to finish with Cuda
 		_, err = get(stream)
