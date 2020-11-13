@@ -563,3 +563,11 @@ func putInt(dst []byte, src []byte, n int) {
 		dst[i] = 0
 	}
 }
+
+// putBits() copies bits from one array to another and right-pads any remaining words with zeroes
+func putBits(dst large.Bits, src large.Bits, n int) {
+	copy(dst, src)
+	for i := len(src); i < len(dst) && i < n; i++ {
+		dst[i] = 0
+	}
+}

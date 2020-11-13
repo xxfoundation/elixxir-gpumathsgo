@@ -13,7 +13,7 @@ import "gitlab.com/elixxir/crypto/cyclic"
 // operation against the GPU. The actual GPU call is in mul2_gpu.go and is
 // marked to require `-tags cuda` in your build.
 
-// Mul2ChunkPrototype defines the function type for running the mul2IntBuffers
+// Mul2ChunkPrototype defines the function type for running the mul2
 // kernel in the GPU.
 type Mul2ChunkPrototype func(p *StreamPool, g *cyclic.Group,
 	x, y, result *cyclic.IntBuffer) error
