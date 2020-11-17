@@ -115,9 +115,15 @@ func BenchmarkExpCPU_N(b *testing.B) {
 	runExpCPU(b, uint32(b.N))
 }
 func BenchmarkExpCPU_1024(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runExpCPU(b, uint32(1024))
 }
 func BenchmarkExpCPU_8192(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runExpCPU(b, uint32(1024*8))
 }
 
@@ -136,12 +142,21 @@ func BenchmarkExpGPU_1024(b *testing.B) {
 	runExpGPU(b, uint32(1024))
 }
 func BenchmarkExpGPU_8192(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runExpGPU(b, uint32(1024*8))
 }
 func BenchmarkExpGPU_16384(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runExpGPU(b, uint32(1024*16))
 }
 func BenchmarkExpGPU_32768(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runExpGPU(b, uint32(1024*32))
 }
 

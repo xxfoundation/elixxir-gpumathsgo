@@ -145,15 +145,27 @@ func BenchmarkElGamalCPU_N(b *testing.B) {
 	runElGamalCPU(b, uint32(b.N))
 }
 func BenchmarkElGamalCPU_1024(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runElGamalCPU(b, uint32(1024))
 }
 func BenchmarkElGamalCPU_8192(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runElGamalCPU(b, uint32(1024*8))
 }
 func BenchmarkElGamalCPU_16384(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runElGamalCPU(b, uint32(1024*16))
 }
 func BenchmarkElGamalCPU_32768(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runElGamalCPU(b, uint32(1024*32))
 }
 
@@ -164,12 +176,21 @@ func BenchmarkElGamalGPU_1024(b *testing.B) {
 	runElGamalGPU(b, uint32(1024))
 }
 func BenchmarkElGamalGPU_8192(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runElGamalGPU(b, uint32(1024*8))
 }
 func BenchmarkElGamalGPU_16384(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runElGamalGPU(b, uint32(1024*16))
 }
 func BenchmarkElGamalGPU_32768(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runElGamalGPU(b, uint32(1024*32))
 }
 

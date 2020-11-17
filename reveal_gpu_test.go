@@ -83,9 +83,15 @@ func BenchmarkRevealCPU_N(b *testing.B) {
 	runRevealCPU(b, uint32(b.N))
 }
 func BenchmarkRevealCPU_1024(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runRevealCPU(b, uint32(1024))
 }
 func BenchmarkRevealCPU_8192(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runRevealCPU(b, uint32(1024*8))
 }
 
@@ -99,8 +105,14 @@ func BenchmarkRevealGPU_8192(b *testing.B) {
 	runRevealGPU(b, uint32(1024*8))
 }
 func BenchmarkRevealGPU_16384(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runRevealGPU(b, uint32(1024*16))
 }
 func BenchmarkRevealGPU_32768(b *testing.B) {
+	if testing.Short() {
+		b.SkipNow()
+	}
 	runRevealGPU(b, uint32(1024*32))
 }
