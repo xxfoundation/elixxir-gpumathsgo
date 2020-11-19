@@ -32,9 +32,7 @@ func initElGamal(batchSize uint32) (*cyclic.Group, *cyclic.Int,
 	return grp, PublicCypherKey, phaseKeys, shareKeys
 }
 
-func elgamalCPU(t testing.TB, batchSize uint32, grp *cyclic.Group,
-	PublicCypherKey *cyclic.Int, phaseKeys, shareKeys,
-	KeysPayload, CypherPayload *cyclic.IntBuffer) {
+func elgamalCPU(batchSize uint32, grp *cyclic.Group, PublicCypherKey *cyclic.Int, phaseKeys, shareKeys, KeysPayload, CypherPayload *cyclic.IntBuffer) {
 	for i := uint32(0); i < batchSize; i++ {
 		cryptops.ElGamal(grp,
 			phaseKeys.Get(i), shareKeys.Get(i),
@@ -43,7 +41,7 @@ func elgamalCPU(t testing.TB, batchSize uint32, grp *cyclic.Group,
 	}
 }
 
-func elgamalGPU(t testing.TB, streamPool *StreamPool, batchSize uint32,
+func elgamalGPU(t testing.TB, streamPool *StreamPool,
 	grp *cyclic.Group, PublicCypherKey *cyclic.Int, phaseKeys, shareKeys,
 	KeysPayload, CypherPayload *cyclic.IntBuffer) {
 	err := ElGamalChunk(streamPool, grp, phaseKeys, shareKeys,
@@ -59,25 +57,22 @@ func TestElGamal(t *testing.T) {
 	grp, PublicCypherKey, phaseKeys, shareKeys := initElGamal(batchSize)
 
 	// Generate the payload buffers
-	KeysPayloadCPU := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, KeysPayloadCPU, 42)
-	CypherPayloadCPU := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, CypherPayloadCPU, 43)
+	KeysPayloadCPU := initRandomIntBuffer(grp, batchSize, 42, 256/8)
+	CypherPayloadCPU := initRandomIntBuffer(grp, batchSize, 43, grp.GetP().BitLen())
 
 	// Make a copy for GPU Processing
 	KeysPayloadGPU := KeysPayloadCPU.DeepCopy()
 	CypherPayloadGPU := CypherPayloadCPU.DeepCopy()
 
 	// Run CPU
-	elgamalCPU(t, batchSize, grp, PublicCypherKey, phaseKeys, shareKeys,
-		KeysPayloadCPU, CypherPayloadCPU)
+	elgamalCPU(batchSize, grp, PublicCypherKey, phaseKeys, shareKeys, KeysPayloadCPU, CypherPayloadCPU)
 
 	// Run GPU
 	streamPool, err := NewStreamPool(2, 65536)
 	if err != nil {
 		t.Fatal(err)
 	}
-	elgamalGPU(t, streamPool, batchSize, grp, PublicCypherKey,
+	elgamalGPU(t, streamPool, grp, PublicCypherKey,
 		phaseKeys, shareKeys, KeysPayloadGPU, CypherPayloadGPU)
 
 	printLen := len(grp.GetPBytes()) / 2 // # bits / 16 for hex
@@ -98,7 +93,10 @@ func TestElGamal(t *testing.T) {
 				CPCPU.TextVerbose(16, printLen))
 		}
 	}
-	streamPool.Destroy()
+	err = streamPool.Destroy()
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 // BenchmarkElGamalCPU provides a baseline with a single-threaded CPU benchmark
@@ -106,15 +104,12 @@ func runElGamalCPU(b *testing.B, batchSize uint32) {
 	grp, PublicCypherKey, phaseKeys, shareKeys := initElGamal(batchSize)
 
 	// Generate the payload buffers
-	KeysPayloadCPU := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, KeysPayloadCPU, 42)
-	CypherPayloadCPU := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, CypherPayloadCPU, 43)
+	KeysPayloadCPU := initRandomIntBuffer(grp, batchSize, 42, 0)
+	CypherPayloadCPU := initRandomIntBuffer(grp, batchSize, 43, 0)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		elgamalCPU(b, batchSize, grp, PublicCypherKey, phaseKeys,
-			shareKeys, KeysPayloadCPU, CypherPayloadCPU)
+		elgamalCPU(batchSize, grp, PublicCypherKey, phaseKeys, shareKeys, KeysPayloadCPU, CypherPayloadCPU)
 	}
 }
 
@@ -123,10 +118,8 @@ func runElGamalGPU(b *testing.B, batchSize uint32) {
 	grp, PublicCypherKey, phaseKeys, shareKeys := initElGamal(batchSize)
 
 	// Generate the payload buffers
-	KeysPayloadGPU := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, KeysPayloadGPU, 42)
-	CypherPayloadGPU := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, CypherPayloadGPU, 43)
+	KeysPayloadGPU := initRandomIntBuffer(grp, batchSize, 42, 0)
+	CypherPayloadGPU := initRandomIntBuffer(grp, batchSize, 43, 0)
 
 	streamPool, err := NewStreamPool(2, 65536)
 	if err != nil {
@@ -135,10 +128,13 @@ func runElGamalGPU(b *testing.B, batchSize uint32) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		elgamalGPU(b, streamPool, batchSize, grp, PublicCypherKey,
+		elgamalGPU(b, streamPool, grp, PublicCypherKey,
 			phaseKeys, shareKeys, KeysPayloadGPU, CypherPayloadGPU)
 	}
-	streamPool.Destroy()
+	err = streamPool.Destroy()
+	if err != nil {
+		b.Error(err)
+	}
 }
 
 func BenchmarkElGamalCPU_N(b *testing.B) {
@@ -192,7 +188,6 @@ func BenchmarkElGamalCUDA4096_256_streams(b *testing.B) {
 		b.Fatal(err)
 	}
 	// Using prng because the cryptographically secure RNG used by the group is too slow to feed the GPU
-	rng := newRng(5)
 	b.ResetTimer()
 	remainingItems := b.N
 	for i := 0; i < b.N; i += numItems {
@@ -202,43 +197,19 @@ func BenchmarkElGamalCUDA4096_256_streams(b *testing.B) {
 		if remainingItems < numItems {
 			numItemsToUpload = remainingItems
 		}
-		input := ElGamalInput{
-			Slots:           make([]ElGamalInputSlot, numItemsToUpload),
-			PublicCypherKey: g.Random(g.NewInt(1)).Bytes(),
-			Prime:           g.GetPBytes(),
-			G:               g.GetG().Bytes(),
-		}
+		PublicCypherKey := g.Random(g.NewInt(1))
 		// Hopefully random number generation doesn't bottleneck things!
-		for j := 0; j < numItemsToUpload; j++ {
-			// Unfortunately, we can't just generate things using the group, because it's too slow
-			key := make([]byte, xByteLen)
-			ecrKey := make([]byte, xByteLen)
-			cypher := make([]byte, xByteLen)
-			privateKey := make([]byte, yByteLen)
-			rng.Read(key)
-			rng.Read(ecrKey)
-			rng.Read(cypher)
-			rng.Read(privateKey)
-			for !g.BytesInside(key, ecrKey, cypher, privateKey) {
-				rng.Read(key)
-				rng.Read(ecrKey)
-				rng.Read(cypher)
-				rng.Read(privateKey)
-			}
-			input.Slots[j] = ElGamalInputSlot{
-				PrivateKey: privateKey,
-				Key:        key,
-				EcrKey:     ecrKey,
-				Cypher:     cypher,
-			}
-		}
+		key := initRandomIntBuffer(g, uint32(numItemsToUpload), 42, xByteLen)
+		ecrKey := initRandomIntBuffer(g, uint32(numItemsToUpload), 43, xByteLen)
+		cypher := initRandomIntBuffer(g, uint32(numItemsToUpload), 44, xByteLen)
+		privateKey := initRandomIntBuffer(g, uint32(numItemsToUpload), 45, yByteLen)
 		stream := streamPool.TakeStream()
-		resultChan := ElGamal(input, env, stream)
+		resultChan := elGamal(g, key, privateKey, PublicCypherKey, ecrKey, cypher, env, stream)
 		go func() {
-			result := <-resultChan
+			err := <-resultChan
 			streamPool.ReturnStream(stream)
-			if result.Err != nil {
-				b.Fatal(result.Err)
+			if err != nil {
+				b.Fatal(err)
 			}
 		}()
 	}

@@ -88,10 +88,15 @@ func initKeys(grp *cyclic.Group, batchSize uint32,
 	}
 }
 
+// intSize is length of random ints in bytes
 func initRandomIntBuffer(grp *cyclic.Group, batchSize uint32,
-	buffer *cyclic.IntBuffer, seed int64) {
+	seed int64, intSize int) *cyclic.IntBuffer {
 	rng := newRng(seed)
-	intSize := len(grp.GetPBytes())
+	buffer := grp.NewIntBuffer(batchSize, grp.NewInt(1))
+	// default to prime length
+	if intSize == 0 {
+		intSize = len(grp.GetPBytes())
+	}
 	for i := uint32(0); i < batchSize; i++ {
 		b, err := csprng.GenerateInGroup(grp.GetPBytes(), intSize, rng)
 		if err != nil {
@@ -99,4 +104,5 @@ func initRandomIntBuffer(grp *cyclic.Group, batchSize uint32,
 		}
 		grp.SetBytes(buffer.Get(i), b)
 	}
+	return buffer
 }

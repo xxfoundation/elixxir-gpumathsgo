@@ -43,10 +43,8 @@ func TestMul2(t *testing.T) {
 	grp := initMul2()
 
 	// Generate the payload buffers
-	xCPU := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, xCPU, 42)
-	yCPU := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, yCPU, 43)
+	xCPU := initRandomIntBuffer(grp, batchSize, 42, 0)
+	yCPU := initRandomIntBuffer(grp, batchSize, 43, 0)
 
 	// Make a copy for GPU Processing
 	xGPU := xCPU.DeepCopy()
@@ -85,10 +83,8 @@ func BenchmarkMul2CPU4096(b *testing.B) {
 
 	// mul2 4kbit*4kbit
 	batchSize := uint32(b.N)
-	x := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, x, 42)
-	y := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, y, 43)
+	x := initRandomIntBuffer(grp, batchSize, 42, 0)
+	y := initRandomIntBuffer(grp, batchSize, 43, 0)
 
 	b.ResetTimer()
 	mul2CPU(batchSize, grp, x, y)
@@ -98,10 +94,8 @@ func BenchmarkMul2GPU4096(b *testing.B) {
 	grp := makeTestGroup4096()
 
 	numMuls := uint32(b.N)
-	x := grp.NewIntBuffer(numMuls, grp.NewInt(1))
-	initRandomIntBuffer(grp, numMuls, x, 42)
-	y := grp.NewIntBuffer(numMuls, grp.NewInt(1))
-	initRandomIntBuffer(grp, numMuls, y, 43)
+	x := initRandomIntBuffer(grp, numMuls, 42, 0)
+	y := initRandomIntBuffer(grp, numMuls, 43, 0)
 	result := grp.NewIntBuffer(numMuls, grp.NewInt(1))
 
 	numStreams := 2

@@ -535,33 +535,12 @@ func get(stream Stream) (time.Duration, error) {
 	return duration, err
 }
 
-// get2 queries the stream to see if the event has completed
-//func get2(stream Stream) error {
-//	return goError(C.getResults2(stream.s))
-//}
-
 // Reset the CUDA device
 // Hopefully this will allow the CUDA profile to be gotten in the graphical profiler
 func resetDevice() error {
 	errString := C.resetDevice()
 	err := goError(errString)
 	return err
-}
-
-// TODO better to use an offset or slice the header in different places?
-// Puts an integer (in bytes) into a buffer
-// Check bounds here? Any safety available?
-// Src and dst should be different memory areas. This isn't meant to work meaningfully if the buffers overlap.
-// n is the length in bytes of the int in the destination area
-// if src is too short, an area of dst will be overwritten with zeroes for safety reasons (right-padded)
-func putInt(dst []byte, src []byte, n int) {
-	n2 := len(src)
-	for i := 0; i < n2; i++ {
-		dst[n2-i-1] = src[i]
-	}
-	for i := n2; i < n; i++ {
-		dst[i] = 0
-	}
 }
 
 // putBits() copies bits from one array to another and right-pads any remaining words with zeroes

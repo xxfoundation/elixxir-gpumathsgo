@@ -20,7 +20,7 @@ var ExpChunk ExpChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	return z, errors.New(NoGpuErrStr)
 }
 
-// Exp is stubbed unless GPU is present.
+// exp is stubbed unless GPU is present.
 func Exp(input ExpInput, stream Stream) chan ExpResult {
 	// Return the result later, when the GPU job finishes
 	resultChan := make(chan ExpResult, 1)

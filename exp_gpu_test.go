@@ -12,7 +12,6 @@ package gpumaths
 import (
 	"gitlab.com/elixxir/crypto/cryptops"
 	"gitlab.com/elixxir/crypto/cyclic"
-	"math/rand"
 	"testing"
 )
 
@@ -22,15 +21,13 @@ func initExp() *cyclic.Group {
 	return initTestGroup()
 }
 
-func expCPU(t testing.TB, batchSize uint32, grp *cyclic.Group,
-	x, y, z *cyclic.IntBuffer) {
+func expCPU(batchSize uint32, grp *cyclic.Group, x, y, z *cyclic.IntBuffer) {
 	for i := uint32(0); i < batchSize; i++ {
 		cryptops.Exp(grp, x.Get(i), y.Get(i), z.Get(i))
 	}
 }
 
-func expGPU(t testing.TB, streamPool *StreamPool, batchSize uint32,
-	grp *cyclic.Group, x, y, z *cyclic.IntBuffer) {
+func expGPU(t testing.TB, streamPool *StreamPool, grp *cyclic.Group, x, y, z *cyclic.IntBuffer) {
 	_, err := ExpChunk(streamPool, grp, x, y, z)
 	if err != nil {
 		t.Fatal(err)
@@ -42,49 +39,48 @@ func TestExp(t *testing.T) {
 	batchSize := uint32(1024)
 	grp := initExp()
 
-	x := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, x, 42)
-	y := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, y, 43)
+	x := initRandomIntBuffer(grp, batchSize, 42, 0)
+	y := initRandomIntBuffer(grp, batchSize, 43, 0)
 
 	zCPU := grp.NewIntBuffer(batchSize, grp.NewInt(1))
 	zGPU := grp.NewIntBuffer(batchSize, grp.NewInt(1))
 
 	// Run CPU
-	expCPU(t, batchSize, grp, x, y, zCPU)
+	expCPU(batchSize, grp, x, y, zCPU)
 
 	// Run GPU
 	streamPool, err := NewStreamPool(2, 65536)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expGPU(t, streamPool, batchSize, grp, x, y, zGPU)
+	expGPU(t, streamPool, grp, x, y, zGPU)
 
 	printLen := len(grp.GetPBytes()) / 2 // # bits / 16 for hex
 	for i := uint32(0); i < batchSize; i++ {
 		if zGPU.Get(i).Cmp(zCPU.Get(i)) != 0 {
-			t.Errorf("Exp mismatch on index %d:\n%s\n%s",
+			t.Errorf("exp mismatch on index %d:\n%s\n%s",
 				i, zGPU.Get(i).TextVerbose(16, printLen),
 				zCPU.Get(i).TextVerbose(16, printLen))
 		}
 	}
-	streamPool.Destroy()
+	err = streamPool.Destroy()
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 // BenchmarkExpCPU provides a baseline with a single-threaded CPU benchmark
 func runExpCPU(b *testing.B, batchSize uint32) {
 	grp := initExp()
 
-	x := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, x, 42)
-	y := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, y, 43)
+	x := initRandomIntBuffer(grp, batchSize, 42, 0)
+	y := initRandomIntBuffer(grp, batchSize, 43, 0)
 
 	z := grp.NewIntBuffer(batchSize, grp.NewInt(1))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		expCPU(b, batchSize, grp, x, y, z)
+		expCPU(batchSize, grp, x, y, z)
 	}
 }
 
@@ -92,10 +88,8 @@ func runExpCPU(b *testing.B, batchSize uint32) {
 func runExpGPU(b *testing.B, batchSize uint32) {
 	grp := initExp()
 
-	x := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, x, 42)
-	y := grp.NewIntBuffer(batchSize, grp.NewInt(1))
-	initRandomIntBuffer(grp, batchSize, y, 43)
+	x := initRandomIntBuffer(grp, batchSize, 42, 0)
+	y := initRandomIntBuffer(grp, batchSize, 43, 0)
 
 	z := grp.NewIntBuffer(batchSize, grp.NewInt(1))
 
@@ -106,9 +100,12 @@ func runExpGPU(b *testing.B, batchSize uint32) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		expGPU(b, streamPool, batchSize, grp, x, y, z)
+		expGPU(b, streamPool, grp, x, y, z)
 	}
-	streamPool.Destroy()
+	err = streamPool.Destroy()
+	if err != nil {
+		b.Error(err)
+	}
 }
 
 func BenchmarkExpCPU_N(b *testing.B) {
@@ -148,19 +145,12 @@ func BenchmarkExpGPU_32768(b *testing.B) {
 func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	g := makeTestGroup4096()
 	env := &gpumathsEnv4096
-	numSlots := b.N
-	input := ExpInput{
-		Slots:   make([]ExpInputSlot, numSlots),
-		Modulus: g.GetPBytes(),
-	}
-	for i := 0; i < numSlots; i++ {
-		input.Slots[i] = ExpInputSlot{
-			Base:     g.Random(g.NewInt(1)).Bytes(),
-			Exponent: g.Random(g.NewInt(1)).Bytes(),
-		}
-	}
+	numSlots := uint32(b.N)
+	Base := initRandomIntBuffer(g, numSlots, 42, 0)
+	Exponent := initRandomIntBuffer(g, numSlots, 42, 0)
+	Results := g.NewIntBuffer(numSlots, g.NewInt(1))
 
-	stream, err := createStreams(1, env.streamSizeContaining(numSlots,
+	stream, err := createStreams(1, env.streamSizeContaining(int(numSlots),
 		kernelPowmOdd))
 	if err != nil {
 		b.Fatal(err)
@@ -170,10 +160,10 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	// It might be possible to run another benchmark that does two or more
 	// chunks instead, which could be faster if the call could be made
 	// asynchronous (which should be possible)
-	resultChan := Exp(input, env, stream[0])
-	result := <-resultChan
-	if result.Err != nil {
-		b.Fatal(result.Err)
+	errors := exp(g, Base, Exponent, Results, env, stream[0])
+	err = <-errors
+	if err != nil {
+		b.Fatal(err)
 	}
 	b.StopTimer()
 	// Write out any cached profiling data
@@ -185,34 +175,26 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 
 // x**y, x is 2048 bits long, y is 256 bits long
 func BenchmarkPowmCUDA4096_256(b *testing.B) {
-	const xBitLen = 4096
-	const xByteLen = xBitLen / 8
-	const yBitLen = 256
-	const yByteLen = yBitLen / 8
+
 	g := makeTestGroup4096()
 	env := &gpumathsEnv4096
 
-	numSlots := b.N
-	streams, err := createStreams(1, env.streamSizeContaining(numSlots,
+	numSlots := uint32(b.N)
+	streams, err := createStreams(1, env.streamSizeContaining(int(numSlots),
 		kernelPowmOdd))
-	input := ExpInput{
-		Slots:   make([]ExpInputSlot, numSlots),
-		Modulus: g.GetPBytes(),
-	}
 
-	for i := 0; i < numSlots; i++ {
-		input.Slots[i].Exponent = g.Random(g.NewInt(1)).Bytes()[480:]
-		input.Slots[i].Base = g.Random(g.NewInt(1)).Bytes()
-	}
+	Base := initRandomIntBuffer(g, numSlots, 42, 0)
+	Exponent := initRandomIntBuffer(g, numSlots, 42, 256/8)
+	Results := g.NewIntBuffer(numSlots, g.NewInt(1))
 	b.ResetTimer()
 	// We'll run the exponentiation for the whole array in one chunk
 	// It might be possible to run another benchmark that does two or more
 	// chunks instead, which could be faster if the call could be made
 	// asynchronous (which should be possible)
-	resultChan := Exp(input, env, streams[0])
-	result := <-resultChan
-	if result.Err != nil {
-		b.Fatal(result.Err)
+	resultChan := exp(g, Base, Exponent, Results, env, streams[0])
+	err = <-resultChan
+	if err != nil {
+		b.Fatal(err)
 	}
 	b.StopTimer()
 	// This benchmark doesn't include converting resulting memory back to
@@ -225,8 +207,7 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 }
 
 func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
-	const xBitLen = 2048
-	const xByteLen = xBitLen / 8
+
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup2048()
@@ -241,7 +222,6 @@ func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
 	}
 	// Using prng because the cryptographically secure RNG used by the
 	// group is too slow to feed the GPU
-	rng := rand.New(rand.NewSource(5))
 	b.ResetTimer()
 	remainingItems := b.N
 	for i := 0; i < b.N; i += numItems {
@@ -251,34 +231,17 @@ func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
 		if remainingItems < numItems {
 			numItemsToUpload = remainingItems
 		}
-		input := ExpInput{
-			Slots:   make([]ExpInputSlot, numItemsToUpload),
-			Modulus: g.GetPBytes(),
-		}
 		// Hopefully random number generation doesn't bottleneck things!
-		for j := 0; j < numItemsToUpload; j++ {
-			// Unfortunately, we can't just generate things using
-			// the group, because it's too slow
-			base := make([]byte, xByteLen)
-			exponent := make([]byte, yByteLen)
-			rng.Read(base)
-			rng.Read(exponent)
-			for !g.BytesInside(base, exponent) {
-				rng.Read(base)
-				rng.Read(exponent)
-			}
-			input.Slots[j] = ExpInputSlot{
-				Base:     base,
-				Exponent: exponent,
-			}
-		}
+		base := initRandomIntBuffer(g, uint32(numItemsToUpload), 42, 0)
+		exponent := initRandomIntBuffer(g, uint32(numItemsToUpload), 42, yByteLen)
+		results := g.NewIntBuffer(uint32(numItemsToUpload), g.NewInt(1))
 		stream := streamPool.TakeStream()
-		resultChan := Exp(input, env, stream)
+		errChan := exp(g, base, exponent, results, env, stream)
 		go func() {
-			result := <-resultChan
+			err := <-errChan
 			streamPool.ReturnStream(stream)
-			if result.Err != nil {
-				b.Fatal(result.Err)
+			if err != nil {
+				b.Fatal(err)
 			}
 		}()
 	}
@@ -298,8 +261,7 @@ func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
 }
 
 func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
-	const xBitLen = 4096
-	const xByteLen = xBitLen / 8
+
 	const yBitLen = 256
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
@@ -314,7 +276,6 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 	}
 	// Using prng because the cryptographically secure RNG used by the
 	// group is too slow to feed the GPU
-	rng := rand.New(rand.NewSource(5))
 	b.ResetTimer()
 	remainingItems := b.N
 	for i := 0; i < b.N; i += numItems {
@@ -324,34 +285,17 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		if remainingItems < numItems {
 			numItemsToUpload = remainingItems
 		}
-		input := ExpInput{
-			Slots:   make([]ExpInputSlot, numItemsToUpload),
-			Modulus: g.GetPBytes(),
-		}
 		// Hopefully random number generation doesn't bottleneck things!
-		for j := 0; j < numItemsToUpload; j++ {
-			// Unfortunately, we can't just generate things using
-			// the group, because it's too slow
-			base := make([]byte, xByteLen)
-			exponent := make([]byte, yByteLen)
-			rng.Read(base)
-			rng.Read(exponent)
-			for !g.BytesInside(base, exponent) {
-				rng.Read(base)
-				rng.Read(exponent)
-			}
-			input.Slots[j] = ExpInputSlot{
-				Base:     base,
-				Exponent: exponent,
-			}
-		}
+		base := initRandomIntBuffer(g, uint32(numItemsToUpload), 42, 0)
+		exponent := initRandomIntBuffer(g, uint32(numItemsToUpload), 42, yByteLen)
+		results := g.NewIntBuffer(uint32(numItemsToUpload), g.NewInt(1))
 		stream := streamPool.TakeStream()
-		resultChan := Exp(input, env, stream)
+		errChan := exp(g, base, exponent, results, env, stream)
 		go func() {
-			result := <-resultChan
+			err := <-errChan
 			streamPool.ReturnStream(stream)
-			if result.Err != nil {
-				b.Fatal(result.Err)
+			if err != nil {
+				b.Fatal(err)
 			}
 		}()
 	}

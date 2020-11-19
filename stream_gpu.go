@@ -19,7 +19,6 @@ package gpumaths
 import "C"
 import (
 	"gitlab.com/xx_network/crypto/large"
-	"time"
 	"unsafe"
 )
 
@@ -31,9 +30,6 @@ type Stream struct {
 	cpuData []byte
 	// Same data but in words!
 	cpuDataWords large.Bits
-
-	// TODO move to env, track elapsed time PER ITEM and PER KERNEL
-	elapsedTimeMovingAverage time.Duration
 }
 
 // Return the portion of the stream's CPU memory that's used for outputs

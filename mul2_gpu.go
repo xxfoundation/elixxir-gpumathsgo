@@ -136,7 +136,6 @@ func mul2(g *cyclic.Group, x intGetter, y intGetter, results intGetter, env gpum
 		offset = 0
 		for i := uint32(0); i < numSlots; i++ {
 			// Put the first operand for this slot
-			// TODO rightpad with zeroes
 			putBits(inputs[offset:offset+bnLengthWords], x.Get(i).Bits(), bnLengthWords)
 			offset += bnLengthWords
 			// Put the second operand for this slot
