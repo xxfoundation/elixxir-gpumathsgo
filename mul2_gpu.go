@@ -16,7 +16,6 @@ package gpumaths
 import "C"
 import (
 	"gitlab.com/elixxir/crypto/cyclic"
-	"gitlab.com/xx_network/crypto/large"
 	"math/rand"
 	"time"
 )
@@ -177,10 +176,7 @@ func mul2(g *cyclic.Group, x intGetter, y intGetter, results intGetter, env gpum
 		offset = 0
 		for i := uint32(0); i < numSlots; i++ {
 			// Output the computed result into each slot
-			thisOutput := outputs[offset : offset+bnLengthWords]
-			thisOutputCopy := make(large.Bits, len(thisOutput))
-			putBits(thisOutputCopy, thisOutput, bnLengthWords)
-			g.SetBits(results.Get(i), thisOutputCopy)
+			g.OverwriteBits(results.Get(i), outputs[offset:offset+bnLengthWords])
 			offset += bnLengthWords
 		}
 

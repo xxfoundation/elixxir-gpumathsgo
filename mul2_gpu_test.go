@@ -105,7 +105,7 @@ func BenchmarkMul2GPU4096(b *testing.B) {
 	}
 	b.ResetTimer()
 	// Set size of gpu jobs
-	const gpuJobSize = 512
+	const gpuJobSize = 64
 	chunkStart := uint32(0)
 	var chunkStartLock sync.Mutex
 	var wg sync.WaitGroup

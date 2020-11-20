@@ -16,7 +16,6 @@ package gpumaths
 import "C"
 import (
 	"gitlab.com/elixxir/crypto/cyclic"
-	"gitlab.com/xx_network/crypto/large"
 )
 
 // reveal_gpu.go contains the CUDA ops for the reveal operation. reveal(...)
@@ -106,10 +105,7 @@ func reveal(g *cyclic.Group, publicCypherKey *cyclic.Int, cypher *cyclic.IntBuff
 		offset = 0
 		for i := uint32(0); i < numSlots; i++ {
 			offsetend := offset + bnLengthWords
-			cypherCopy := make(large.Bits, bnLengthWords)
-			putBits(cypherCopy, results[offset:offsetend], bnLengthWords)
-
-			g.SetBits(result.Get(i), cypherCopy)
+			g.OverwriteBits(result.Get(i), results[offset:offsetend])
 			offset += bnLengthWords
 		}
 

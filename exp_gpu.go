@@ -16,7 +16,6 @@ package gpumaths
 import "C"
 import (
 	"gitlab.com/elixxir/crypto/cyclic"
-	"gitlab.com/xx_network/crypto/large"
 )
 
 // exp_gpu.go contains the CUDA ops for the exp operation. exp(...)
@@ -106,10 +105,7 @@ func exp(g *cyclic.Group, x, y, result *cyclic.IntBuffer, env gpumathsEnv, strea
 		offset = 0
 		for i := uint32(0); i < numSlots; i++ {
 			end := offset + bnLengthWords
-			thisResult := results[offset:end]
-			thisResultCopy := make(large.Bits, len(thisResult))
-			putBits(thisResultCopy, thisResult, bnLengthWords)
-			g.SetBits(result.Get(i), thisResultCopy)
+			g.OverwriteBits(result.Get(i), results[offset:end])
 			offset += bnLengthWords
 		}
 

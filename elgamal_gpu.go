@@ -17,7 +17,6 @@ import "C"
 
 import (
 	"gitlab.com/elixxir/crypto/cyclic"
-	"gitlab.com/xx_network/crypto/large"
 )
 
 // elgamal_gpu.go contains the CUDA ops for the ElGamal operation. ElGamal(...)
@@ -127,17 +126,10 @@ func elGamal(g *cyclic.Group, key, privateKey *cyclic.IntBuffer, publicCypherKey
 		offset = 0
 		for i := uint32(0); i < numSlots; i++ {
 			end := offset + bnLengthWords
-			thisEcrKey := results[offset:end]
-			ecrKeyCopy := make(large.Bits, len(thisEcrKey))
-			putBits(ecrKeyCopy, results[offset:end],
-				bnLengthWords)
-			g.SetBits(ecrKey.Get(i), ecrKeyCopy)
+			g.OverwriteBits(ecrKey.Get(i), results[offset:end])
 			offset += bnLengthWords
 			end = offset + bnLengthWords
-			thisCypher := results[offset:end]
-			cypherCopy := make(large.Bits, len(thisCypher))
-			putBits(cypherCopy, thisCypher, bnLengthWords)
-			g.SetBits(cypher.Get(i), cypherCopy)
+			g.OverwriteBits(cypher.Get(i), results[offset:end])
 			offset += bnLengthWords
 		}
 
