@@ -5,8 +5,63 @@ package gpumaths
 import (
 	"gitlab.com/elixxir/crypto/cryptops"
 	"gitlab.com/elixxir/crypto/cyclic"
+	"sync"
 	"testing"
 )
+
+func BenchmarkMul3GPU4096(b *testing.B) {
+	grp := makeTestGroup4096()
+
+	numMuls := uint32(b.N)
+	x := initRandomIntBuffer(grp, numMuls, 42, 0)
+	y := initRandomIntBuffer(grp, numMuls, 43, 0)
+	z := initRandomIntBuffer(grp, numMuls, 44, 0)
+	result := grp.NewIntBuffer(numMuls, grp.NewInt(1))
+
+	numStreams := 2
+	streamPool, err := NewStreamPool(numStreams, 6553600)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	// Set size of gpu jobs
+	const gpuJobSize = 64
+	chunkStart := uint32(0)
+	var chunkStartLock sync.Mutex
+	var wg sync.WaitGroup
+	for i := 0; i < numStreams; i++ {
+		wg.Add(1)
+		// We'll use both streams, as the server does
+		go func() {
+			for {
+				chunkStartLock.Lock()
+				thisChunkStart := chunkStart
+				chunkStart = thisChunkStart + gpuJobSize
+				chunkStartLock.Unlock()
+				if thisChunkStart >= numMuls {
+					break
+				}
+				thisChunkEnd := thisChunkStart + gpuJobSize
+				if thisChunkEnd > numMuls {
+					// bound subbuffer end to subbuffer end size
+					thisChunkEnd = numMuls
+				}
+				resultSub := result.GetSubBuffer(thisChunkStart, thisChunkEnd)
+				xSub := x.GetSubBuffer(thisChunkStart, thisChunkEnd)
+				ySub := y.GetSubBuffer(thisChunkStart, thisChunkEnd)
+				zSub := z.GetSubBuffer(thisChunkStart, thisChunkEnd)
+				err := Mul3Chunk(streamPool, grp, xSub, ySub, zSub, resultSub)
+				if err != nil {
+					b.Error(err)
+				}
+			}
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+
+}
 
 func TestMul3Chunk(t *testing.T) {
 	batchSize := uint32(24601)

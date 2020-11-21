@@ -129,7 +129,7 @@ func BenchmarkMul2GPU4096(b *testing.B) {
 				resultSub := result.GetSubBuffer(thisChunkStart, thisChunkEnd)
 				xSub := x.GetSubBuffer(thisChunkStart, thisChunkEnd)
 				ySub := y.GetSubBuffer(thisChunkStart, thisChunkEnd)
-				err := Mul2Chunk(streamPool, grp, resultSub, xSub, ySub)
+				err := Mul2Chunk(streamPool, grp, xSub, ySub, resultSub)
 				if err != nil {
 					b.Error(err)
 				}
