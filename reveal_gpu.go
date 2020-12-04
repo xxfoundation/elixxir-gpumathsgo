@@ -96,7 +96,7 @@ func reveal(g *cyclic.Group, publicCypherKey *cyclic.Int, cypher *cyclic.IntBuff
 		results := stream.getCpuOutputsWords(env, kernelReveal, int(numSlots))
 
 		// Wait on things to finish with Cuda
-		_, err = get(stream)
+		err = get(stream)
 		if err != nil {
 			errors <- err
 			return

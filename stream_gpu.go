@@ -34,11 +34,6 @@ type Stream struct {
 
 // Return the portion of the stream's CPU memory that's used for outputs
 // Outputs come after inputs and constants
-func (s *Stream) getCpuOutputs(g gpumathsEnv, kernel C.enum_kernel, numItems int) []byte {
-	start := g.getConstantsSize(kernel) + g.getInputSize(kernel)*numItems
-	end := start + g.getOutputSize(kernel)*numItems
-	return s.cpuData[start:end]
-}
 func (s *Stream) getCpuOutputsWords(g gpumathsEnv, kernel C.enum_kernel, numItems int) large.Bits {
 	start := g.getConstantsSizeWords(kernel) + g.getInputSizeWords(kernel)*numItems
 	end := start + g.getOutputSizeWords(kernel)*numItems
@@ -46,11 +41,6 @@ func (s *Stream) getCpuOutputsWords(g gpumathsEnv, kernel C.enum_kernel, numItem
 }
 
 // Inputs come after constants and before outputs
-func (s *Stream) getCpuInputs(g gpumathsEnv, kernel C.enum_kernel, numItems int) []byte {
-	start := g.getConstantsSize(kernel)
-	end := start + g.getInputSize(kernel)*numItems
-	return s.cpuData[start:end]
-}
 func (s *Stream) getCpuInputsWords(g gpumathsEnv, kernel C.enum_kernel, numItems int) large.Bits {
 	start := g.getConstantsSizeWords(kernel)
 	end := start + g.getInputSizeWords(kernel)*numItems
@@ -58,10 +48,6 @@ func (s *Stream) getCpuInputsWords(g gpumathsEnv, kernel C.enum_kernel, numItems
 }
 
 // Constants exist at the very start of the buffer
-func (s *Stream) getCpuConstants(g gpumathsEnv, kernel C.enum_kernel) []byte {
-	return s.cpuData[:g.getConstantsSize(kernel)]
-}
-
 func (s *Stream) getCpuConstantsWords(g gpumathsEnv, kernel C.enum_kernel) large.Bits {
 	return s.cpuDataWords[:g.getConstantsSizeWords(kernel)]
 }

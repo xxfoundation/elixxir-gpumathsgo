@@ -116,7 +116,7 @@ func elGamal(g *cyclic.Group, key, privateKey *cyclic.IntBuffer, publicCypherKey
 		results := stream.getCpuOutputsWords(env, kernelElgamal, int(numSlots))
 
 		// Wait on things to finish with Cuda
-		_, err = get(stream)
+		err = get(stream)
 		if err != nil {
 			resultChan <- err
 			return

@@ -95,7 +95,7 @@ func exp(g *cyclic.Group, x, y, result *cyclic.IntBuffer, env gpumathsEnv, strea
 		results := stream.getCpuOutputsWords(env, kernelPowmOdd, int(numSlots))
 
 		// Wait on things to finish with Cuda
-		_, err = get(stream)
+		err = get(stream)
 		if err != nil {
 			resultChan <- err
 			return

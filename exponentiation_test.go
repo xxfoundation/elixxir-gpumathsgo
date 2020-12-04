@@ -112,7 +112,7 @@ func TestElgamal4096(t *testing.T) {
 	}
 }
 
-func TestPutInt(t *testing.T) {
+func TestPutBits(t *testing.T) {
 	a := large.Bits{1, 2, 3, 4, 5}
 	b := make(large.Bits, len(a))
 	putBits(b, a, len(a))

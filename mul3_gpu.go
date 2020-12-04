@@ -100,7 +100,7 @@ func mul3(g *cyclic.Group, x *cyclic.IntBuffer, y *cyclic.IntBuffer, z *cyclic.I
 		outputs := stream.getCpuOutputsWords(env, kernelMul3, int(numSlots))
 
 		// Wait on things to finish with Cuda
-		_, err = get(stream)
+		err = get(stream)
 
 		if debugPrint {
 			println("Call", callId, "post get", time.Since(start))

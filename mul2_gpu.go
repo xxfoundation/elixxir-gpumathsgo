@@ -160,7 +160,7 @@ func mul2(g *cyclic.Group, x intGetter, y intGetter, results intGetter, env gpum
 		outputs := stream.getCpuOutputsWords(env, kernelMul2, int(numSlots))
 
 		// Wait on things to finish with Cuda
-		_, err = get(stream)
+		err = get(stream)
 
 		if debugPrint {
 			println("Call", callId, "post get", time.Since(start))

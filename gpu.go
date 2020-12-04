@@ -36,16 +36,12 @@ import (
 	"gitlab.com/xx_network/crypto/large"
 	"math/big"
 	"reflect"
-	"time"
 	"unsafe"
 )
 
 type gpumathsEnv interface {
 	// enqueue calls put, run, and download all together
 	enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error
-	download(stream Stream) error
-	run(stream Stream) error
-	put(stream Stream, whichToRun C.enum_kernel, numSlots int) error
 	getBitLen() int
 	getByteLen() int
 	getWordLen() int
@@ -239,57 +235,8 @@ func (gpumaths4096) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots in
 		return nil
 	}
 }
-func (gpumaths2048) put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
-	uploadError := C.upload2048(C.uint(numSlots), stream.s, whichToRun)
-	if uploadError != nil {
-		return goError(uploadError)
-	} else {
-		return nil
-	}
-}
-func (gpumaths3200) put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
-	uploadError := C.upload3200(C.uint(numSlots), stream.s, whichToRun)
-	if uploadError != nil {
-		return goError(uploadError)
-	} else {
-		return nil
-	}
-}
-func (gpumaths4096) put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
-	uploadError := C.upload4096(C.uint(numSlots), stream.s, whichToRun)
-	if uploadError != nil {
-		return goError(uploadError)
-	} else {
-		return nil
-	}
-}
-
-// Can you use the C type like this?
-// Might need to redefine enumeration in Golang
-func (gpumaths2048) run(stream Stream) error {
-	return goError(C.run2048(stream.s))
-}
-func (gpumaths3200) run(stream Stream) error {
-	return goError(C.run3200(stream.s))
-}
-func (gpumaths4096) run(stream Stream) error {
-	return goError(C.run4096(stream.s))
-}
-
-// Enqueue a download for this stream after execution finishes
-// Doesn't actually block for the download
-func (gpumaths2048) download(stream Stream) error {
-	return goError(C.download2048(stream.s))
-}
-func (gpumaths3200) download(stream Stream) error {
-	return goError(C.download3200(stream.s))
-}
-func (gpumaths4096) download(stream Stream) error {
-	return goError(C.download4096(stream.s))
-}
 
 // Populate the sizes of constants, inputs, outputs in words based on the byte sizes
-// The byte sizes must be evenly divisible by the word size!
 func (s *sizeData) populateWordSizes(kernel C.enum_kernel) {
 	sizeOfOperand := make(large.Bits, 1)
 	sizeOfWord := int(unsafe.Sizeof(sizeOfOperand[0]))
@@ -524,15 +471,12 @@ func (g *gpumaths4096) streamSizeContaining(numItems int, kernel int) int {
 		g.getConstantsSize(C.enum_kernel(kernel))
 }
 
-// Wait for this stream's download to finish and return a pointer to the results
+// Block on stream's download and return any errors
 // This also checks the CGBN error report (presumably this is where things should be checked, if not now, then in the future, to see whether they're in the group or not. However this may not(?) be doable if everything is in Montgomery space.)
-// TODO wait/sleep before getting?
-func get(stream Stream) (time.Duration, error) {
-	getResult := C.getResults(stream.s)
-	err := goError(getResult.error)
-	C.free(unsafe.Pointer(getResult))
-	duration := time.Duration(float32(time.Millisecond) * float32(getResult.elapsedTime))
-	return duration, err
+func get(stream Stream) error {
+	cErr := C.getResults(stream.s)
+	err := goError(cErr)
+	return err
 }
 
 // Reset the CUDA device
