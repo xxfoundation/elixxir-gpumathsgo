@@ -16,9 +16,7 @@ package gpumaths
 import "C"
 
 import (
-	"fmt"
 	"gitlab.com/elixxir/crypto/cyclic"
-	"log"
 )
 
 // elgamal_gpu.go contains the CUDA ops for the ElGamal operation. ElGamal(...)
@@ -35,29 +33,15 @@ var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	key, privateKey *cyclic.IntBuffer, publicCypherKey *cyclic.Int,
 	ecrKey, cypher *cyclic.IntBuffer) error {
 	// Populate ElGamal inputs
-	numSlots := ecrKey.Len()
-	input := ElGamalInput{
-		Slots:           make([]ElGamalInputSlot, numSlots),
-		PublicCypherKey: publicCypherKey.Bytes(),
-		Prime:           g.GetPBytes(),
-		G:               g.GetG().Bytes(),
-	}
-	for i := uint32(0); i < uint32(numSlots); i++ {
-		input.Slots[i] = ElGamalInputSlot{
-			PrivateKey: privateKey.Get(i).Bytes(),
-			Key:        key.Get(i).Bytes(),
-			EcrKey:     ecrKey.Get(i).Bytes(),
-			Cypher:     cypher.Get(i).Bytes(),
-		}
-	}
+	numSlots := uint32(ecrKey.Len())
 
 	env := chooseEnv(g)
 
 	// Run kernel on the inputs
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	maxSlotsElGamal := env.maxSlots(stream.memSize, kernelElgamal)
-	for i := 0; i < numSlots; i += maxSlotsElGamal {
+	maxSlotsElGamal := uint32(env.maxSlots(len(stream.cpuData), kernelElgamal))
+	for i := uint32(0); i < numSlots; i += maxSlotsElGamal {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
 		if i+maxSlotsElGamal <= numSlots {
@@ -65,22 +49,10 @@ var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 		} else {
 			sliceEnd = numSlots
 		}
-		thisInput := ElGamalInput{
-			Slots:           input.Slots[i:sliceEnd],
-			Prime:           input.Prime,
-			G:               input.G,
-			PublicCypherKey: input.PublicCypherKey,
-		}
-		result := <-ElGamal(thisInput, env, stream)
-		if result.Err != nil {
-			return result.Err
-		}
-		// Populate with results
-		for j := range result.Slots {
-			g.SetBytes(ecrKey.Get(uint32(i+j)),
-				result.Slots[j].EcrKey)
-			g.SetBytes(cypher.Get(uint32(i+j)),
-				result.Slots[j].Cypher)
+		err := <-elGamal(g, key.GetSubBuffer(i, sliceEnd), privateKey.GetSubBuffer(i, sliceEnd),
+			publicCypherKey, ecrKey.GetSubBuffer(i, sliceEnd), cypher.GetSubBuffer(i, sliceEnd), env, stream)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -94,110 +66,74 @@ var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 // equal to the length of the template-instantiated BN on the GPU.
 // bnLength is a length in bits
 // TODO validate BN length in code (i.e. pick kernel variants based on bn length)
-func ElGamal(input ElGamalInput, env gpumathsEnv, stream Stream) chan ElGamalResult {
+func elGamal(g *cyclic.Group, key, privateKey *cyclic.IntBuffer, publicCypherKey *cyclic.Int,
+	ecrKey, cypher *cyclic.IntBuffer, env gpumathsEnv, stream Stream) chan error {
 	// Return the result later, when the GPU job finishes
-	resultChan := make(chan ElGamalResult, 1)
+	resultChan := make(chan error, 1)
 	go func() {
-		validateElgamalInput(input, env, stream)
-
 		// Arrange memory into stream buffers
-		numSlots := len(input.Slots)
+		numSlots := uint32(key.Len())
 
 		// TODO clean this up by implementing the
 		// arrangement/dearrangement with reader/writer interfaces
 		//  or smth
-		constants := toSlice(C.getCpuConstants(stream.s),
-			env.getConstantsSize(kernelElgamal))
+		constants := stream.getCpuConstantsWords(env, kernelElgamal)
 		offset := 0
-		bnLengthBytes := env.getByteLen()
-		putInt(constants[offset:offset+bnLengthBytes], input.G,
-			bnLengthBytes)
-		offset += bnLengthBytes
-		putInt(constants[offset:offset+bnLengthBytes],
-			input.Prime, bnLengthBytes)
-		offset += bnLengthBytes
-		putInt(constants[offset:offset+bnLengthBytes],
-			input.PublicCypherKey, bnLengthBytes)
+		bnLengthWords := env.getWordLen()
+		putBits(constants[offset:offset+bnLengthWords], g.GetG().Bits(),
+			bnLengthWords)
+		offset += bnLengthWords
+		putBits(constants[offset:offset+bnLengthWords],
+			g.GetP().Bits(), bnLengthWords)
+		offset += bnLengthWords
+		putBits(constants[offset:offset+bnLengthWords],
+			publicCypherKey.Bits(), bnLengthWords)
 
-		inputs := toSlice(env.getCpuInputs(stream, kernelElgamal),
-			env.getInputSize(kernelElgamal)*numSlots)
+		inputs := stream.getCpuInputsWords(env, kernelElgamal, int(numSlots))
 		offset = 0
-		for i := 0; i < numSlots; i++ {
-			putInt(inputs[offset:offset+bnLengthBytes],
-				input.Slots[i].PrivateKey, bnLengthBytes)
-			offset += bnLengthBytes
-			putInt(inputs[offset:offset+bnLengthBytes],
-				input.Slots[i].Key, bnLengthBytes)
-			offset += bnLengthBytes
-			putInt(inputs[offset:offset+bnLengthBytes],
-				input.Slots[i].EcrKey, bnLengthBytes)
-			offset += bnLengthBytes
-			putInt(inputs[offset:offset+bnLengthBytes],
-				input.Slots[i].Cypher, bnLengthBytes)
-			offset += bnLengthBytes
+		for i := uint32(0); i < numSlots; i++ {
+			putBits(inputs[offset:offset+bnLengthWords],
+				privateKey.Get(i).Bits(), bnLengthWords)
+			offset += bnLengthWords
+			putBits(inputs[offset:offset+bnLengthWords],
+				key.Get(i).Bits(), bnLengthWords)
+			offset += bnLengthWords
+			putBits(inputs[offset:offset+bnLengthWords],
+				ecrKey.Get(i).Bits(), bnLengthWords)
+			offset += bnLengthWords
+			putBits(inputs[offset:offset+bnLengthWords],
+				cypher.Get(i).Bits(), bnLengthWords)
+			offset += bnLengthWords
 		}
 
 		// Upload, run, wait for download
-		err := env.put(stream, kernelElgamal, numSlots)
+		err := env.enqueue(stream, kernelElgamal, int(numSlots))
 		if err != nil {
-			resultChan <- ElGamalResult{Err: err}
+			resultChan <- err
 			return
 		}
-		err = env.run(stream)
-		if err != nil {
-			resultChan <- ElGamalResult{Err: err}
-			return
-		}
-		err = env.download(stream)
-		if err != nil {
-			resultChan <- ElGamalResult{Err: err}
-			return
-		}
-
 		// Results will be stored in this buffer
-		resultBuf := make([]byte, env.getOutputSize(kernelElgamal)*numSlots)
-		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
+		results := stream.getCpuOutputsWords(env, kernelElgamal, int(numSlots))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
 		if err != nil {
-			resultChan <- ElGamalResult{Err: err}
+			resultChan <- err
 			return
 		}
 
 		// Everything is OK, so let's go ahead and import the results
-		result := ElGamalResult{
-			Slots: make([]ElGamalResultSlot, numSlots),
-			Err:   nil,
-		}
-
 		offset = 0
-		for i := 0; i < numSlots; i++ {
-			end := offset + bnLengthBytes
-			result.Slots[i].EcrKey = resultBuf[offset:end]
-			putInt(result.Slots[i].EcrKey, results[offset:end],
-				bnLengthBytes)
-			offset += bnLengthBytes
-			end = offset + bnLengthBytes
-			result.Slots[i].Cypher = resultBuf[offset:end]
-			putInt(result.Slots[i].Cypher, results[offset:end],
-				bnLengthBytes)
-			offset += bnLengthBytes
+		for i := uint32(0); i < numSlots; i++ {
+			end := offset + bnLengthWords
+			g.OverwriteBits(ecrKey.Get(i), results[offset:end])
+			offset += bnLengthWords
+			end = offset + bnLengthWords
+			g.OverwriteBits(cypher.Get(i), results[offset:end])
+			offset += bnLengthWords
 		}
 
-		resultChan <- result
+		resultChan <- nil
 	}()
 	return resultChan
-}
-
-// Bounds check to make sure that the stream can take all the inputs
-func validateElgamalInput(input ElGamalInput, env gpumathsEnv, stream Stream) {
-	maxSlotsElGamal := env.maxSlots(stream.memSize, kernelElgamal)
-	if len(input.Slots) > maxSlotsElGamal {
-		// This can only happen because of user error (unlike Cuda
-		// problems), so panic to make the error apparent
-		log.Panicf(fmt.Sprintf("%v slots is more than this stream's "+
-			"max of %v for ElGamal kernel",
-			len(input.Slots), maxSlotsElGamal))
-	}
 }
