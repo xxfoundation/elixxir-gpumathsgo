@@ -145,7 +145,6 @@ func toSliceOfWords(pointer unsafe.Pointer, size int) large.Bits {
 
 // Load the shared library and return any errors
 // Copies a C string into a Go error and frees the C string
-// TODO is this slow?
 func goError(cString *C.char) error {
 	if cString != nil {
 		errorStringGo := C.GoString(cString)
