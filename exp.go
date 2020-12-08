@@ -13,6 +13,24 @@ import "gitlab.com/elixxir/crypto/cyclic"
 // exp operation against the GPU. The actual GPU call is in exp_gpu.go
 // and is marked to require `-tags cuda` in your build.
 
+// ExpInputSlot is the input structure for each slot in the batch
+type ExpInputSlot struct {
+	Base     []byte
+	Exponent []byte
+}
+
+// ExpInput is the input structure for the op
+type ExpInput struct {
+	Slots   []ExpInputSlot
+	Modulus []byte
+}
+
+// ExpResult is the output structure for the op
+type ExpResult struct {
+	Results [][]byte
+	Err     error
+}
+
 // ExpChunkPrototype Implement cryptop interface for ExpChunk
 type ExpChunkPrototype func(p *StreamPool, g *cyclic.Group,
 	x, y, z *cyclic.IntBuffer) (*cyclic.IntBuffer, error)

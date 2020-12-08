@@ -33,68 +33,66 @@ import (
 	"errors"
 	"fmt"
 	"gitlab.com/elixxir/crypto/cyclic"
-	"gitlab.com/xx_network/crypto/large"
-	"math/big"
 	"reflect"
 	"unsafe"
 )
 
 type gpumathsEnv interface {
-	// enqueue calls put, run, and download all together
-	enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error
+	download(stream Stream) error
+	run(stream Stream) error
+	put(stream Stream, whichToRun C.enum_kernel, numSlots int) error
 	getBitLen() int
 	getByteLen() int
-	getWordLen() int
 	getConstantsSize(C.enum_kernel) int
 	getOutputSize(C.enum_kernel) int
 	getInputSize(C.enum_kernel) int
-	// Get the number of words (in large.Bits type) that the constants for this
-	// kernel take up
-	getConstantsSizeWords(C.enum_kernel) int
-	getOutputSizeWords(C.enum_kernel) int
-	getInputSizeWords(C.enum_kernel) int
+	getCpuOutputs(stream Stream) unsafe.Pointer
+	getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer
 	maxSlots(memSize int, op C.enum_kernel) int
 	streamSizeContaining(numItems int, kernel int) int
 }
 
 // TODO These types implement gpumaths? interface
 type (
-	gpumaths2048 struct{ sizeData }
-	gpumaths3200 struct{ sizeData }
-	gpumaths4096 struct{ sizeData }
+	gpumaths2048 struct{}
+	gpumaths3200 struct{}
+	gpumaths4096 struct{}
 )
 
-var gpumathsEnv2048 gpumaths2048
-var gpumathsEnv3200 gpumaths3200
-var gpumathsEnv4096 gpumaths4096
-
-// All size data that a gpumath env could get is included in this type
-// Since these calls will always have the same result,
-// there's no need for synchronization mechanisms when using this data structure
-type sizeData [C.NUM_KERNELS]struct {
-	inputSize          int
-	constantsSize      int
-	outputSize         int
-	inputSizeWords     int
-	constantsSizeWords int
-	outputSizeWords    int
-}
-
-// Should the envs belong to the stream pool? probably not
 func chooseEnv(g *cyclic.Group) gpumathsEnv {
 	primeLen := g.GetP().BitLen()
-	len2048 := gpumathsEnv2048.getBitLen()
-	len3200 := gpumathsEnv3200.getBitLen()
-	len4096 := gpumathsEnv4096.getBitLen()
+	len2048 := gpumaths2048{}.getBitLen()
+	len3200 := gpumaths3200{}.getBitLen()
+	len4096 := gpumaths4096{}.getBitLen()
 	if primeLen <= len2048 {
-		return &gpumathsEnv2048
+		return gpumaths2048{}
 	} else if primeLen <= len3200 {
-		return &gpumathsEnv3200
+		return gpumaths3200{}
 	} else if primeLen <= len4096 {
-		return &gpumathsEnv4096
+		return gpumaths4096{}
 	} else {
 		panic(fmt.Sprintf("Prime %s was too big for any available gpumaths environment", g.GetP().Text(16)))
 	}
+}
+
+func (gpumaths2048) getCpuOutputs(stream Stream) unsafe.Pointer {
+	return C.getCpuOutputs2048(stream.s)
+}
+func (gpumaths3200) getCpuOutputs(stream Stream) unsafe.Pointer {
+	return C.getCpuOutputs3200(stream.s)
+}
+func (gpumaths4096) getCpuOutputs(stream Stream) unsafe.Pointer {
+	return C.getCpuOutputs4096(stream.s)
+}
+
+func (gpumaths2048) getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer {
+	return C.getCpuInputs2048(stream.s, kernel)
+}
+func (gpumaths3200) getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer {
+	return C.getCpuInputs3200(stream.s, kernel)
+}
+func (gpumaths4096) getCpuInputs(stream Stream, kernel C.enum_kernel) unsafe.Pointer {
+	return C.getCpuInputs4096(stream.s, kernel)
 }
 
 func (gpumaths2048) getBitLen() int {
@@ -103,19 +101,11 @@ func (gpumaths2048) getBitLen() int {
 func (gpumaths2048) getByteLen() int {
 	return 2048 / 8
 }
-func (g gpumaths2048) getWordLen() int {
-	// TODO large.Word?
-	return g.getByteLen() / int(unsafe.Sizeof(big.Word(0)))
-}
 func (gpumaths3200) getBitLen() int {
 	return 3200
 }
 func (gpumaths3200) getByteLen() int {
 	return 3200 / 8
-}
-func (g gpumaths3200) getWordLen() int {
-	// TODO large.Word?
-	return g.getByteLen() / int(unsafe.Sizeof(big.Word(0)))
 }
 func (gpumaths4096) getBitLen() int {
 	return 4096
@@ -123,22 +113,12 @@ func (gpumaths4096) getBitLen() int {
 func (gpumaths4096) getByteLen() int {
 	return 4096 / 8
 }
-func (g gpumaths4096) getWordLen() int {
-	// TODO large.Word?
-	return g.getByteLen() / int(unsafe.Sizeof(big.Word(0)))
-}
 
 // Create byte slice viewing memory at a certain memory address with a
 // certain length
 // Here be dragons
 func toSlice(pointer unsafe.Pointer, size int) []byte {
 	return *(*[]byte)(unsafe.Pointer(
-		&reflect.SliceHeader{Data: uintptr(pointer),
-			Len: size, Cap: size}))
-}
-
-func toSliceOfWords(pointer unsafe.Pointer, size int) large.Bits {
-	return *(*large.Bits)(unsafe.Pointer(
 		&reflect.SliceHeader{Data: uintptr(pointer),
 			Len: size, Cap: size}))
 }
@@ -156,6 +136,9 @@ func goError(cString *C.char) error {
 }
 
 // Creates streams of a particular size meant to run a particular operation
+// TODO This ideally shouldn't need variants
+//  Maxslots should exist for each size variant
+//  (or just calculate it)
 func createStreams(numStreams int, capacity int) ([]Stream, error) {
 	streamCreateInfo := C.struct_streamCreateInfo{
 		capacity: C.size_t(capacity),
@@ -164,15 +147,11 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 	streams := make([]Stream, 0, numStreams)
 
 	for i := 0; i < numStreams; i++ {
-		// We need to free this createStreamResult, right?
-		// Or, it might be possible to return the struct by value instead.
 		createStreamResult := C.createStream(streamCreateInfo)
 		if createStreamResult.result != nil {
-			sizeofOperand := make(large.Bits, 1)
 			streams = append(streams, Stream{
-				s:            createStreamResult.result,
-				cpuData:      toSlice(createStreamResult.cpuBuf, capacity),
-				cpuDataWords: toSliceOfWords(createStreamResult.cpuBuf, int(uintptr(capacity)/unsafe.Sizeof(sizeofOperand[0]))),
+				s:       createStreamResult.result,
+				memSize: capacity,
 			})
 		}
 		if createStreamResult.error != nil {
@@ -180,11 +159,8 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 			for j := 0; j < len(streams); j++ {
 				C.destroyStream(streams[j].s)
 			}
-			err := goError(createStreamResult.error)
-			C.free(unsafe.Pointer(createStreamResult))
-			return nil, err
+			return nil, goError(createStreamResult.error)
 		}
-		C.free(unsafe.Pointer(createStreamResult))
 	}
 
 	return streams, nil
@@ -209,25 +185,24 @@ func destroyStreams(streams []Stream) error {
 // TODO Store the kernel enum for the upload in the stream
 //  That way you don't have to pass that info again for run
 //  There should be no scenario where the stream gets run for a different kernel than the upload
-// Could return byte slices of output as well? perhaps?
-func (gpumaths2048) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
-	uploadError := C.enqueue2048(C.uint(numSlots), stream.s, whichToRun)
+func (gpumaths2048) put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	uploadError := C.upload2048(C.uint(numSlots), stream.s, whichToRun)
 	if uploadError != nil {
 		return goError(uploadError)
 	} else {
 		return nil
 	}
 }
-func (gpumaths3200) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
-	uploadError := C.enqueue3200(C.uint(numSlots), stream.s, whichToRun)
+func (gpumaths3200) put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	uploadError := C.upload3200(C.uint(numSlots), stream.s, whichToRun)
 	if uploadError != nil {
 		return goError(uploadError)
 	} else {
 		return nil
 	}
 }
-func (gpumaths4096) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
-	uploadError := C.enqueue4096(C.uint(numSlots), stream.s, whichToRun)
+func (gpumaths4096) put(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	uploadError := C.upload4096(C.uint(numSlots), stream.s, whichToRun)
 	if uploadError != nil {
 		return goError(uploadError)
 	} else {
@@ -235,191 +210,87 @@ func (gpumaths4096) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots in
 	}
 }
 
-// Populate the sizes of constants, inputs, outputs in words based on the byte sizes
-func (s *sizeData) populateWordSizes(kernel C.enum_kernel) {
-	sizeOfOperand := make(large.Bits, 1)
-	sizeOfWord := int(unsafe.Sizeof(sizeOfOperand[0]))
-	s[kernel].inputSizeWords = s[kernel].inputSize / sizeOfWord
-	s[kernel].constantsSizeWords = s[kernel].constantsSize / sizeOfWord
-	s[kernel].outputSizeWords = s[kernel].outputSize / sizeOfWord
+// Can you use the C type like this?
+// Might need to redefine enumeration in Golang
+func (gpumaths2048) run(stream Stream) error {
+	return goError(C.run2048(stream.s))
+}
+func (gpumaths3200) run(stream Stream) error {
+	return goError(C.run3200(stream.s))
+}
+func (gpumaths4096) run(stream Stream) error {
+	return goError(C.run4096(stream.s))
 }
 
-func (g *gpumaths2048) populateSizeData(kernel C.enum_kernel) {
-	g.sizeData[kernel].inputSize = int(C.getInputSize2048(kernel))
-	// If the result is zero, the kernel is unknown
-	// These panics should never happen unless there's programmer error
-	if g.sizeData[kernel].inputSize == 0 {
-		panic(fmt.Sprintf("Couldn't find input size for kernel %v", kernel))
-	}
-	g.sizeData[kernel].outputSize = int(C.getOutputSize2048(kernel))
-	if g.sizeData[kernel].outputSize == 0 {
-		panic(fmt.Sprintf("Couldn't find output size for kernel %v", kernel))
-	}
-	g.sizeData[kernel].constantsSize = int(C.getConstantsSize2048(kernel))
-	if g.sizeData[kernel].constantsSize == 0 {
-		panic(fmt.Sprintf("Couldn't find constants size for kernel %v", kernel))
-	}
-	g.sizeData.populateWordSizes(kernel)
+// Enqueue a download for this stream after execution finishes
+// Doesn't actually block for the download
+func (gpumaths2048) download(stream Stream) error {
+	return goError(C.download2048(stream.s))
 }
-func (g *gpumaths3200) populateSizeData(kernel C.enum_kernel) {
-	g.sizeData[kernel].inputSize = int(C.getInputSize3200(kernel))
-	// If the result is zero, the kernel is unknown
-	// These panics should never happen unless there's programmer error
-	if g.sizeData[kernel].inputSize == 0 {
-		panic(fmt.Sprintf("Couldn't find input size for kernel %v", kernel))
-	}
-	g.sizeData[kernel].outputSize = int(C.getOutputSize3200(kernel))
-	if g.sizeData[kernel].outputSize == 0 {
-		panic(fmt.Sprintf("Couldn't find output size for kernel %v", kernel))
-	}
-	g.sizeData[kernel].constantsSize = int(C.getConstantsSize3200(kernel))
-	if g.sizeData[kernel].constantsSize == 0 {
-		panic(fmt.Sprintf("Couldn't find constants size for kernel %v", kernel))
-	}
-	g.sizeData.populateWordSizes(kernel)
+func (gpumaths3200) download(stream Stream) error {
+	return goError(C.download3200(stream.s))
 }
-func (g *gpumaths4096) populateSizeData(kernel C.enum_kernel) {
-	g.sizeData[kernel].inputSize = int(C.getInputSize4096(kernel))
-	// If the result is zero, the kernel is unknown
-	// These panics should never happen unless there's programmer error
-	if g.sizeData[kernel].inputSize == 0 {
-		panic(fmt.Sprintf("Couldn't find input size for kernel %v", kernel))
-	}
-	g.sizeData[kernel].outputSize = int(C.getOutputSize4096(kernel))
-	if g.sizeData[kernel].outputSize == 0 {
-		panic(fmt.Sprintf("Couldn't find output size for kernel %v", kernel))
-	}
-	g.sizeData[kernel].constantsSize = int(C.getConstantsSize4096(kernel))
-	if g.sizeData[kernel].constantsSize == 0 {
-		panic(fmt.Sprintf("Couldn't find constants size for kernel %v", kernel))
-	}
-	g.sizeData.populateWordSizes(kernel)
+func (gpumaths4096) download(stream Stream) error {
+	return goError(C.download4096(stream.s))
 }
 
 // Four numbers per input
 // Returns size in bytes
-func (g *gpumaths2048) getInputSize(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].inputSize == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].inputSize
+func (gpumaths2048) getInputSize(kernel C.enum_kernel) int {
+	return int(C.getInputSize2048(kernel))
 }
-func (g *gpumaths3200) getInputSize(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].inputSize == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].inputSize
+func (gpumaths3200) getInputSize(kernel C.enum_kernel) int {
+	return int(C.getInputSize3200(kernel))
 }
-func (g *gpumaths4096) getInputSize(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].inputSize == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].inputSize
-}
-
-// Returns size in words
-func (g *gpumaths2048) getInputSizeWords(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].inputSizeWords == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].inputSizeWords
-}
-func (g *gpumaths3200) getInputSizeWords(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].inputSizeWords == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].inputSizeWords
-}
-
-// Might be able to refactor this for less repetition...
-func (g *gpumaths4096) getInputSizeWords(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].inputSizeWords == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].inputSizeWords
+func (gpumaths4096) getInputSize(kernel C.enum_kernel) int {
+	return int(C.getInputSize4096(kernel))
 }
 
 // Returns size in bytes
-func (g *gpumaths2048) getOutputSize(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].outputSize == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].outputSize
+func (gpumaths2048) getOutputSize(kernel C.enum_kernel) int {
+	return int(C.getOutputSize2048(kernel))
 }
-func (g *gpumaths3200) getOutputSize(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].outputSize == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].outputSize
+func (gpumaths3200) getOutputSize(kernel C.enum_kernel) int {
+	return int(C.getOutputSize3200(kernel))
 }
-func (g *gpumaths4096) getOutputSize(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].outputSize == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].outputSize
-}
-
-// Returns size in words
-func (g *gpumaths2048) getOutputSizeWords(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].outputSizeWords == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].outputSizeWords
-}
-func (g *gpumaths3200) getOutputSizeWords(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].outputSizeWords == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].outputSizeWords
-}
-func (g *gpumaths4096) getOutputSizeWords(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].outputSizeWords == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].outputSizeWords
+func (gpumaths4096) getOutputSize(kernel C.enum_kernel) int {
+	return int(C.getOutputSize4096(kernel))
 }
 
 // Returns size in bytes
-func (g *gpumaths2048) getConstantsSize(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].constantsSize == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].constantsSize
+func (gpumaths2048) getConstantsSize(kernel C.enum_kernel) int {
+	return int(C.getConstantsSize2048(kernel))
 }
-func (g *gpumaths3200) getConstantsSize(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].constantsSize == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].constantsSize
+func (gpumaths3200) getConstantsSize(kernel C.enum_kernel) int {
+	return int(C.getConstantsSize3200(kernel))
 }
-func (g *gpumaths4096) getConstantsSize(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].constantsSize == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].constantsSize
-}
-func (g *gpumaths2048) getConstantsSizeWords(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].constantsSizeWords == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].constantsSizeWords
-}
-func (g *gpumaths3200) getConstantsSizeWords(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].constantsSizeWords == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].constantsSizeWords
-}
-func (g *gpumaths4096) getConstantsSizeWords(kernel C.enum_kernel) int {
-	if g.sizeData[kernel].constantsSizeWords == 0 {
-		g.populateSizeData(kernel)
-	}
-	return g.sizeData[kernel].constantsSizeWords
+func (gpumaths4096) getConstantsSize(kernel C.enum_kernel) int {
+	return int(C.getConstantsSize4096(kernel))
 }
 
 // Helper functions for sizing
 // Get the number of slots for an operation
-func (g *gpumaths2048) maxSlots(memSize int, op C.enum_kernel) int {
+func (g gpumaths2048) maxSlots(memSize int, op C.enum_kernel) int {
+	constantsSize := g.getConstantsSize(op)
+	slotSize := g.getInputSize(op) + g.getOutputSize(op)
+	memForSlots := memSize - constantsSize
+	if memForSlots < 0 {
+		return 0
+	} else {
+		return memForSlots / slotSize
+	}
+}
+func (g gpumaths3200) maxSlots(memSize int, op C.enum_kernel) int {
+	constantsSize := g.getConstantsSize(op)
+	slotSize := g.getInputSize(op) + g.getOutputSize(op)
+	memForSlots := memSize - constantsSize
+	if memForSlots < 0 {
+		return 0
+	} else {
+		return memForSlots / slotSize
+	}
+}
+func (g gpumaths4096) maxSlots(memSize int, op C.enum_kernel) int {
 	constantsSize := g.getConstantsSize(op)
 	slotSize := g.getInputSize(op) + g.getOutputSize(op)
 	memForSlots := memSize - constantsSize
@@ -430,52 +301,30 @@ func (g *gpumaths2048) maxSlots(memSize int, op C.enum_kernel) int {
 	}
 }
 
-func (g *gpumaths3200) maxSlots(memSize int, op C.enum_kernel) int {
-	constantsSize := g.getConstantsSize(op)
-	slotSize := g.getInputSize(op) + g.getOutputSize(op)
-	memForSlots := memSize - constantsSize
-	if memForSlots < 0 {
-		return 0
-	} else {
-		return memForSlots / slotSize
-	}
+func (g gpumaths2048) streamSizeContaining(numItems int, kernel int) int {
+	return g.getInputSize(C.enum_kernel(kernel))*numItems +
+		g.getOutputSize(C.enum_kernel(kernel))*numItems +
+		g.getConstantsSize(C.enum_kernel(kernel))
 }
-
-func (g *gpumaths4096) maxSlots(memSize int, op C.enum_kernel) int {
-	constantsSize := g.getConstantsSize(op)
-	slotSize := g.getInputSize(op) + g.getOutputSize(op)
-	memForSlots := memSize - constantsSize
-	if memForSlots < 0 {
-		return 0
-	} else {
-		return memForSlots / slotSize
-	}
+func (g gpumaths3200) streamSizeContaining(numItems int, kernel int) int {
+	return g.getInputSize(C.enum_kernel(kernel))*numItems +
+		g.getOutputSize(C.enum_kernel(kernel))*numItems +
+		g.getConstantsSize(C.enum_kernel(kernel))
 }
-
-func (g *gpumaths2048) streamSizeContaining(numItems int, kernel int) int {
+func (g gpumaths4096) streamSizeContaining(numItems int, kernel int) int {
 	return g.getInputSize(C.enum_kernel(kernel))*numItems +
 		g.getOutputSize(C.enum_kernel(kernel))*numItems +
 		g.getConstantsSize(C.enum_kernel(kernel))
 }
 
-func (g *gpumaths3200) streamSizeContaining(numItems int, kernel int) int {
-	return g.getInputSize(C.enum_kernel(kernel))*numItems +
-		g.getOutputSize(C.enum_kernel(kernel))*numItems +
-		g.getConstantsSize(C.enum_kernel(kernel))
-}
-
-func (g *gpumaths4096) streamSizeContaining(numItems int, kernel int) int {
-	return g.getInputSize(C.enum_kernel(kernel))*numItems +
-		g.getOutputSize(C.enum_kernel(kernel))*numItems +
-		g.getConstantsSize(C.enum_kernel(kernel))
-}
-
-// Block on stream's download and return any errors
+// Wait for this stream's download to finish and return a pointer to the results
 // This also checks the CGBN error report (presumably this is where things should be checked, if not now, then in the future, to see whether they're in the group or not. However this may not(?) be doable if everything is in Montgomery space.)
+// TODO Copying results to Golang should no longer be the responsibility of this method
+//  Instead, this can be done in the exported integration method, and it can be copied from
+//  the results buffer directly. The length of the results buffer could be another
+//  field of the struct as well, although it would be better to allocate that earlier.
 func get(stream Stream) error {
-	cErr := C.getResults(stream.s)
-	err := goError(cErr)
-	return err
+	return goError(C.getResults(stream.s))
 }
 
 // Reset the CUDA device
@@ -486,10 +335,18 @@ func resetDevice() error {
 	return err
 }
 
-// putBits() copies bits from one array to another and right-pads any remaining words with zeroes
-func putBits(dst large.Bits, src large.Bits, n int) {
-	copy(dst, src)
-	for i := len(src); i < len(dst) && i < n; i++ {
+// TODO better to use an offset or slice the header in different places?
+// Puts an integer (in bytes) into a buffer
+// Check bounds here? Any safety available?
+// Src and dst should be different memory areas. This isn't meant to work meaningfully if the buffers overlap.
+// n is the length in bytes of the int in the destination area
+// if src is too short, an area of dst will be overwritten with zeroes for safety reasons (right-padded)
+func putInt(dst []byte, src []byte, n int) {
+	n2 := len(src)
+	for i := 0; i < n2; i++ {
+		dst[n2-i-1] = src[i]
+	}
+	for i := n2; i < n; i++ {
 		dst[i] = 0
 	}
 }

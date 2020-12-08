@@ -9,47 +9,13 @@
 
 package gpumaths
 
-/*
-#cgo CFLAGS: -I./cgbnBindings/powm -I/opt/xxnetwork/include
-#cgo LDFLAGS: -L/opt/xxnetwork/lib -lpowmosm75 -Wl,-rpath,./lib:/opt/xxnetwork/lib
-#include <powm_odd_export.h>
-#include <stdlib.h>
-#include <string.h>
-*/
-import "C"
-import (
-	"gitlab.com/xx_network/crypto/large"
-	"unsafe"
-)
+import "unsafe"
 
 // TODO Functions that currently take a stream as unsafe.Pointer should instead have a stream as the receiver
 type Stream struct {
 	// Pointer to stream and associated data, usable only on the C side
-	s unsafe.Pointer
-	// This byte slice contains the entire range of the CPU buffer that this stream can use
-	cpuData []byte
-	// Same data but in words!
-	cpuDataWords large.Bits
-}
-
-// Return the portion of the stream's CPU memory that's used for outputs
-// Outputs come after inputs and constants
-func (s *Stream) getCpuOutputsWords(g gpumathsEnv, kernel C.enum_kernel, numItems int) large.Bits {
-	start := g.getConstantsSizeWords(kernel) + g.getInputSizeWords(kernel)*numItems
-	end := start + g.getOutputSizeWords(kernel)*numItems
-	return s.cpuDataWords[start:end]
-}
-
-// Inputs come after constants and before outputs
-func (s *Stream) getCpuInputsWords(g gpumathsEnv, kernel C.enum_kernel, numItems int) large.Bits {
-	start := g.getConstantsSizeWords(kernel)
-	end := start + g.getInputSizeWords(kernel)*numItems
-	return s.cpuDataWords[start:end]
-}
-
-// Constants exist at the very start of the buffer
-func (s *Stream) getCpuConstantsWords(g gpumathsEnv, kernel C.enum_kernel) large.Bits {
-	return s.cpuDataWords[:g.getConstantsSizeWords(kernel)]
+	s       unsafe.Pointer
+	memSize int
 }
 
 // Optional improvements:

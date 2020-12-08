@@ -15,29 +15,41 @@ package gpumaths
 */
 import "C"
 import (
+	"fmt"
 	"gitlab.com/elixxir/crypto/cyclic"
+	"log"
 )
 
-// reveal_gpu.go contains the CUDA ops for the reveal operation. reveal(...)
+// reveal_gpu.go contains the CUDA ops for the Reveal operation. Reveal(...)
 // performs the actual call into the library and RevealChunk implements
 // the streaming interface function called by the server implementation.
 
 const kernelReveal = C.KERNEL_REVEAL
 
-// RevealChunk performs the reveal operation on the cypher payloads
+// RevealChunk performs the Reveal operation on the cypher payloads
 // Precondition: All int buffers must have the same length
 var RevealChunk RevealChunkPrototype = func(p *StreamPool, g *cyclic.Group,
-	publicCypherKey *cyclic.Int, cypher *cyclic.IntBuffer, result *cyclic.IntBuffer) error {
-	// Populate reveal inputs
-	numSlots := uint32(cypher.Len())
+	publicCypherKey *cyclic.Int, cypher *cyclic.IntBuffer) error {
+	// Populate Reveal inputs
+	numSlots := cypher.Len()
+	input := RevealInput{
+		Slots:           make([]RevealInputSlot, numSlots),
+		PublicCypherKey: publicCypherKey.Bytes(),
+		Prime:           g.GetPBytes(),
+	}
+	for i := uint32(0); i < uint32(numSlots); i++ {
+		input.Slots[i] = RevealInputSlot{
+			Cypher: cypher.Get(i).Bytes(),
+		}
+	}
 
 	env := chooseEnv(g)
 
 	// Run kernel on the inputs
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
-	maxSlotsReveal := uint32(env.maxSlots(len(stream.cpuData), kernelReveal))
-	for i := uint32(0); i < numSlots; i += maxSlotsReveal {
+	maxSlotsReveal := env.maxSlots(stream.memSize, kernelReveal)
+	for i := 0; i < numSlots; i += maxSlotsReveal {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
 		if i+maxSlotsReveal <= numSlots {
@@ -45,71 +57,123 @@ var RevealChunk RevealChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 		} else {
 			sliceEnd = numSlots
 		}
-		err := <-reveal(g, publicCypherKey, cypher.GetSubBuffer(i, sliceEnd), result.GetSubBuffer(i, sliceEnd), env, stream)
-		if err != nil {
-			return err
+		thisInput := RevealInput{
+			Slots:           input.Slots[i:sliceEnd],
+			Prime:           input.Prime,
+			PublicCypherKey: input.PublicCypherKey,
+		}
+		result := <-Reveal(thisInput, env, stream)
+		if result.Err != nil {
+			return result.Err
+		}
+		// Populate with results
+		for j := range result.Slots {
+			g.SetBytes(cypher.Get(uint32(i+j)),
+				result.Slots[j].Cypher)
 		}
 	}
 
 	return nil
 }
 
-// reveal runs the reveal operation on cypher payloads inside the GPU
+// Bounds check to make sure that the stream can take all the inputs
+func validateRevealInput(input RevealInput, env gpumathsEnv, stream Stream) {
+	maxSlotsReveal := env.maxSlots(stream.memSize, kernelReveal)
+	if len(input.Slots) > maxSlotsReveal {
+		// This can only happen because of user error (unlike Cuda
+		// problems), so panic to make the error apparent
+		log.Panicf(fmt.Sprintf("%v slots is more than this stream's "+
+			"max of %v for Reveal kernel",
+			len(input.Slots), maxSlotsReveal))
+	}
+}
+
+// Reveal runs the reveal operation on cypher payloads inside the GPU
 // NOTE: publicCypherKey and prime should be byte slices obtained by running
 //       .Bytes() on the large int
 // The resulting byte slice should be trimmed and should be less than or
 // equal to the length of the template-instantiated BN on the GPU.
 // bnLength is a length in bits
 // TODO validate BN length in code (i.e. pick kernel variants based on bn length)
-func reveal(g *cyclic.Group, publicCypherKey *cyclic.Int, cypher *cyclic.IntBuffer, result *cyclic.IntBuffer, env gpumathsEnv, stream Stream) chan error {
+func Reveal(input RevealInput, env gpumathsEnv, stream Stream) chan RevealResult {
 	// Return the result later, when the GPU job finishes
-	errors := make(chan error, 1)
+	resultChan := make(chan RevealResult, 1)
 	go func() {
-		// Arrange memory into stream buffers
-		numSlots := uint32(cypher.Len())
+		validateRevealInput(input, env, stream)
 
-		constants := stream.getCpuConstantsWords(env, kernelReveal)
+		// Arrange memory into stream buffers
+		numSlots := len(input.Slots)
+
+		// TODO clean this up by implementing the
+		// arrangement/dearrangement with reader/writer interfaces
+		// or smth
+		constants := toSlice(C.getCpuConstants(stream.s),
+			env.getConstantsSize(kernelReveal))
 		offset := 0
 		// Prime
-		bnLengthWords := env.getWordLen()
-		putBits(constants[offset:offset+bnLengthWords], g.GetP().Bits(), bnLengthWords)
-		offset += bnLengthWords
+		bnLengthBytes := env.getByteLen()
+		putInt(constants[offset:offset+bnLengthBytes],
+			input.Prime, bnLengthBytes)
+		offset += bnLengthBytes
 		// The compted PublicCypherKey
-		putBits(constants[offset:offset+bnLengthWords], publicCypherKey.Bits(), bnLengthWords)
+		putInt(constants[offset:offset+bnLengthBytes],
+			input.PublicCypherKey, bnLengthBytes)
 
-		inputs := stream.getCpuInputsWords(env, kernelReveal, int(numSlots))
+		inputs := toSlice(env.getCpuInputs(stream, kernelReveal),
+			env.getInputSize(kernelReveal)*numSlots)
 		offset = 0
-		for i := uint32(0); i < numSlots; i++ {
+		for i := 0; i < numSlots; i++ {
 			// Put the CypherPayload for this slot
-			putBits(inputs[offset:offset+bnLengthWords], cypher.Get(i).Bits(), bnLengthWords)
-			offset += bnLengthWords
+			putInt(inputs[offset:offset+bnLengthBytes],
+				input.Slots[i].Cypher, bnLengthBytes)
+			offset += bnLengthBytes
 		}
 
 		// Upload, run, wait for download
-		err := env.enqueue(stream, kernelReveal, int(numSlots))
+		err := env.put(stream, kernelReveal, numSlots)
 		if err != nil {
-			errors <- err
+			resultChan <- RevealResult{Err: err}
+			return
+		}
+		err = env.run(stream)
+		if err != nil {
+			resultChan <- RevealResult{Err: err}
+			return
+		}
+		err = env.download(stream)
+		if err != nil {
+			resultChan <- RevealResult{Err: err}
 			return
 		}
 
 		// Results will be stored in this buffer
-		results := stream.getCpuOutputsWords(env, kernelReveal, int(numSlots))
+		resultBuf := make([]byte,
+			env.getOutputSize(kernelReveal)*numSlots)
+		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
 		if err != nil {
-			errors <- err
+			resultChan <- RevealResult{Err: err}
 			return
 		}
 
-		offset = 0
-		for i := uint32(0); i < numSlots; i++ {
-			offsetend := offset + bnLengthWords
-			g.OverwriteBits(result.Get(i), results[offset:offsetend])
-			offset += bnLengthWords
+		// Everything is OK, so let's go ahead and import the results
+		result := RevealResult{
+			Slots: make([]RevealResultSlot, numSlots),
+			Err:   nil,
 		}
 
-		errors <- nil
+		offset = 0
+		for i := 0; i < numSlots; i++ {
+			offsetend := offset + bnLengthBytes
+			result.Slots[i].Cypher = resultBuf[offset:offsetend]
+			putInt(result.Slots[i].Cypher,
+				results[offset:offsetend], bnLengthBytes)
+			offset += bnLengthBytes
+		}
+
+		resultChan <- result
 	}()
-	return errors
+	return resultChan
 }
