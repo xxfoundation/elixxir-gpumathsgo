@@ -15,6 +15,7 @@ package gpumaths
 */
 import "C"
 import (
+	jww "github.com/spf13/jwalterweatherman"
 	"gitlab.com/elixxir/crypto/cyclic"
 )
 
@@ -41,6 +42,9 @@ var ExpChunk ExpChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	defer p.ReturnStream(stream)
 	env := chooseEnv(g)
 	maxSlotsExp := uint32(env.maxSlots(len(stream.cpuData), kernelPowmOdd))
+	if numSlots > maxSlotsExp {
+		jww.WARN.Printf("Running multiple kernels for ExpChunk. Performance may be degraded")
+	}
 	for i := uint32(0); i < numSlots; i += maxSlotsExp {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice

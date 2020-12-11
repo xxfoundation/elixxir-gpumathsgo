@@ -16,6 +16,7 @@ package gpumaths
 import "C"
 
 import (
+	jww "github.com/spf13/jwalterweatherman"
 	"gitlab.com/elixxir/crypto/cyclic"
 )
 
@@ -41,6 +42,9 @@ var ElGamalChunk ElGamalChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
 	maxSlotsElGamal := uint32(env.maxSlots(len(stream.cpuData), kernelElgamal))
+	if numSlots > maxSlotsElGamal {
+		jww.WARN.Printf("Running multiple kernels for ElgamalChunk. Performance may be degraded")
+	}
 	for i := uint32(0); i < numSlots; i += maxSlotsElGamal {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice

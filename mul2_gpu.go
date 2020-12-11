@@ -15,6 +15,7 @@ package gpumaths
 */
 import "C"
 import (
+	jww "github.com/spf13/jwalterweatherman"
 	"gitlab.com/elixxir/crypto/cyclic"
 	"math/rand"
 	"time"
@@ -57,6 +58,9 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	defer p.ReturnStream(stream)
 	env := chooseEnv(g)
 	maxSlotsMul2 := uint32(env.maxSlots(len(stream.cpuData), kernelMul2))
+	if numSlots > maxSlotsMul2 {
+		jww.WARN.Printf("Running multiple kernels for Mul2Chunk. Performance may be degraded")
+	}
 	for i := uint32(0); i < numSlots; i += maxSlotsMul2 {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice

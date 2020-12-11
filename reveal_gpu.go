@@ -15,6 +15,7 @@ package gpumaths
 */
 import "C"
 import (
+	jww "github.com/spf13/jwalterweatherman"
 	"gitlab.com/elixxir/crypto/cyclic"
 )
 
@@ -37,6 +38,9 @@ var RevealChunk RevealChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
 	maxSlotsReveal := uint32(env.maxSlots(len(stream.cpuData), kernelReveal))
+	if numSlots > maxSlotsReveal {
+		jww.WARN.Printf("Running multiple kernels for RevealChunk. Performance may be degraded")
+	}
 	for i := uint32(0); i < numSlots; i += maxSlotsReveal {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
