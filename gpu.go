@@ -30,8 +30,8 @@ package gpumaths
 */
 import "C"
 import (
-	"errors"
 	"fmt"
+	"github.com/pkg/errors"
 	"gitlab.com/elixxir/crypto/cyclic"
 	"gitlab.com/xx_network/crypto/large"
 	"math/big"
@@ -167,7 +167,38 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 		// We need to free this createStreamResult, right?
 		// Or, it might be possible to return the struct by value instead.
 		createStreamResult := C.createStream(streamCreateInfo)
-		if createStreamResult.result != nil {
+
+		// TODO Any possibility of double free here in error cases?
+		// Check for normally created error first, if it exists
+		if createStreamResult != nil && createStreamResult.error != nil {
+			createError := goError(createStreamResult.error)
+			// Attempt to clean up any streams that were successfully created
+			destroyErr := destroyStreams(append(streams, Stream{s: createStreamResult.result}))
+			C.free(unsafe.Pointer(createStreamResult))
+			if destroyErr != nil && createError != nil {
+				return nil, errors.Wrap(destroyErr, createError.Error())
+			} else if createError != nil {
+				return nil, createError
+			}
+		} else if createStreamResult != nil && C.isStreamValid(createStreamResult.result) == 0 {
+			// No error, but something in the stream wasn't set
+			// Attempt to clean up any streams that were successfully created
+			destroyErr := destroyStreams(append(streams, Stream{s: createStreamResult.result}))
+			C.free(unsafe.Pointer(createStreamResult))
+			if destroyErr != nil {
+				return nil, errors.Wrap(destroyErr, "not all fields of stream were initialized")
+			} else {
+				return nil, errors.New("not all fields of stream were initialized")
+			}
+		} else if createStreamResult == nil {
+			// Unlikely error, but one of the allocations for createStream return structures must have failed
+			// Attempt to clean up any streams that were successfully created
+			destroyError := destroyStreams(streams)
+			return nil, destroyError
+		}
+
+		// If we got here, we should have a good stream result from createStream
+		if createStreamResult.result != nil && createStreamResult.cpuBuf != nil {
 			sizeofOperand := make(large.Bits, 1)
 			streams = append(streams, Stream{
 				s:            createStreamResult.result,
@@ -175,15 +206,7 @@ func createStreams(numStreams int, capacity int) ([]Stream, error) {
 				cpuDataWords: toSliceOfWords(createStreamResult.cpuBuf, int(uintptr(capacity)/unsafe.Sizeof(sizeofOperand[0]))),
 			})
 		}
-		if createStreamResult.error != nil {
-			// Try to destroy all created streams to avoid leaking memory
-			for j := 0; j < len(streams); j++ {
-				C.destroyStream(streams[j].s)
-			}
-			err := goError(createStreamResult.error)
-			C.free(unsafe.Pointer(createStreamResult))
-			return nil, err
-		}
+		// Double free possible here?
 		C.free(unsafe.Pointer(createStreamResult))
 	}
 

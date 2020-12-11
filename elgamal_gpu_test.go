@@ -79,7 +79,7 @@ func TestElGamal(t *testing.T) {
 	for i := uint32(0); i < batchSize; i++ {
 		KPGPU := KeysPayloadGPU.Get(i)
 		KPCPU := KeysPayloadCPU.Get(i)
-		if KPGPU.Cmp(KPGPU) != 0 {
+		if KPGPU.Cmp(KPCPU) != 0 {
 			t.Errorf("KeysPayloadMisMatch on index %d:\n%s\n%s", i,
 				KPGPU.TextVerbose(16, printLen),
 				KPCPU.TextVerbose(16, printLen))
@@ -87,7 +87,7 @@ func TestElGamal(t *testing.T) {
 
 		CPGPU := CypherPayloadGPU.Get(i)
 		CPCPU := CypherPayloadCPU.Get(i)
-		if CPGPU.Cmp(CPGPU) != 0 {
+		if CPGPU.Cmp(CPCPU) != 0 {
 			t.Errorf("CypherPayload mismatch on index %d:\n%s\n%s",
 				i, CPGPU.TextVerbose(16, printLen),
 				CPCPU.TextVerbose(16, printLen))
