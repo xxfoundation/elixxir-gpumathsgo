@@ -4,18 +4,14 @@
 // Use of this source code is governed by a license that can be found in the LICENSE file //
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-package gpumaths
+// Package cryptops wraps various cryptographic operations around a generic interface.
+// Operations include but are not limited to: key generation, ElGamal, multiplication, etc.
+package cryptops
 
-import "gitlab.com/elixxir/crypto/cyclic"
-
-type Mul3ChunkPrototype func(p *StreamPool, g *cyclic.Group,
-	x, y, z, result *cyclic.IntBuffer) error
-
-// GetInputSize is how big chunk sizes should be to run the mul3 operation
-func (Mul3ChunkPrototype) GetInputSize() uint32 {
-	return 256
-}
-
-func (Mul3ChunkPrototype) GetName() string {
-	return "Mul3Chunk"
+type Cryptop interface {
+	//Returns the name.  Used for debugging.
+	GetName() string
+	//Gets the number of parallel computations the cryptop does at once.
+	//A value of zero denotes it is arbitrary
+	GetInputSize() uint32
 }

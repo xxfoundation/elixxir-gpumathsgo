@@ -1,10 +1,16 @@
+////////////////////////////////////////////////////////////////////////////////////////////
+// Copyright © 2020 xx network SEZC                                                       //
+//                                                                                        //
+// Use of this source code is governed by a license that can be found in the LICENSE file //
+////////////////////////////////////////////////////////////////////////////////////////////
+
 //+build linux,gpu
 
 package gpumaths
 
 import (
-	"gitlab.com/elixxir/crypto/cryptops"
 	"gitlab.com/elixxir/crypto/cyclic"
+	"gitlab.com/elixxir/gpumathsgo/cryptops"
 	"sync"
 	"testing"
 )
