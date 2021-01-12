@@ -63,6 +63,11 @@ type StreamPool struct {
 
 // numStreams: Number of streams per device. 2 is usually fine
 func NewStreamPool(numStreams int, memSize int) (*StreamPool, error) {
+	// We should be able to init CUDA here and have it work, right?
+	err := initCuda()
+	if err != nil {
+		return nil, err
+	}
 	// Each stream should support all operations if there's enough memory available
 	var result StreamPool
 	streams, err := createStreams(numStreams, memSize)

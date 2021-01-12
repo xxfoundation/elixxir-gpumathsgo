@@ -114,8 +114,8 @@ func TestElGamalChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	// flush system profiling data, just in case
-	err = resetDevice()
-	if err != nil {
-		t.Fatal(err)
-	}
+	//err = resetDevice()
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
 }

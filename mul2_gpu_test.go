@@ -38,8 +38,11 @@ func mul2GPU(t testing.TB, streamPool *StreamPool,
 }
 
 // Runs precomp decrypt test with GPU stream pool and graphs
+// This test has a synchronization/timing issue. I need to fix it!
 func TestMul2(t *testing.T) {
-	batchSize := uint32(217940)
+	//batchSize := uint32(21794)
+	batchSize := uint32(217938)
+	//batchSize := uint32(217940)
 	grp := initMul2()
 
 	// Generate the payload buffers
@@ -61,15 +64,34 @@ func TestMul2(t *testing.T) {
 	}
 	mul2GPU(t, streamPool, grp, xGPU, yGPU, resultsGPU)
 
-	printLen := len(grp.GetPBytes()) / 2 // # bits / 16 for hex
+	//printLen := len(grp.GetPBytes()) / 2 // # bits / 16 for hex
+	errCount := 0
 	for i := uint32(0); i < batchSize; i++ {
 		resultCPU := yCPU.Get(i)
 		resultGPU := resultsGPU.Get(i)
 		if resultCPU.Cmp(resultGPU) != 0 {
-			t.Errorf("mul2 results mismatch on index %d:\n%s\n%s", i,
-				resultCPU.TextVerbose(16, printLen),
-				resultGPU.TextVerbose(16, printLen))
+			errCount++
+			// Try searching through CPU results - is this result elsewhere in the batch, or is it just garbage?
+			//found := false
+			//for j := uint32(0); j < batchSize; j++ {
+			//	if resultGPU.Cmp(yCPU.Get(i)) == 0 {
+			//		t.Logf("Result at index %v of GPU results found at index %v of CPU results", j, i)
+			//		found = true
+			//		break
+			//	}
+			//}
+			//if !found {
+			//	t.Log("Couldn't find GPU result in CPU results.")
+			//}
+			// Too verbose for now
+			//t.Errorf("mul2 results mismatch on index %d:\n%s\n%s", i,
+			//	resultCPU.TextVerbose(16, printLen),
+			//	resultGPU.TextVerbose(16, printLen))
 		}
+	}
+	t.Log("err count", errCount)
+	if errCount > 0 {
+		t.Errorf("Got %v differing slots in the batch", errCount)
 	}
 	err = streamPool.Destroy()
 	if err != nil {

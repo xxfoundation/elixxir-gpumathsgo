@@ -167,10 +167,10 @@ func BenchmarkPowmCUDA4096_4096(b *testing.B) {
 	}
 	b.StopTimer()
 	// Write out any cached profiling data
-	err = resetDevice()
-	if err != nil {
-		b.Fatal(err)
-	}
+	//err = resetDevice()
+	//if err != nil {
+	//	b.Fatal(err)
+	//}
 }
 
 // x**y, x is 2048 bits long, y is 256 bits long
@@ -200,10 +200,10 @@ func BenchmarkPowmCUDA4096_256(b *testing.B) {
 	// This benchmark doesn't include converting resulting memory back to
 	// cyclic ints
 	// Write out any cached profiling data
-	err = resetDevice()
-	if err != nil {
-		b.Fatal(err)
-	}
+	//err = resetDevice()
+	//if err != nil {
+	//	b.Fatal(err)
+	//}
 }
 
 func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
@@ -254,10 +254,10 @@ func BenchmarkPowmCUDA2048_256_streams(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	err = resetDevice()
-	if err != nil {
-		b.Fatal(err)
-	}
+	//err = resetDevice()
+	//if err != nil {
+	//	b.Fatal(err)
+	//}
 }
 
 func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
@@ -308,8 +308,8 @@ func BenchmarkPowmCUDA4096_256_streams(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	err = resetDevice()
-	if err != nil {
-		b.Fatal(err)
-	}
+	//err = resetDevice()
+	//if err != nil {
+	//	b.Fatal(err)
+	//}
 }

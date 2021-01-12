@@ -173,7 +173,7 @@ func BenchmarkElGamalGPU_32768(b *testing.B) {
 func BenchmarkElGamalCUDA4096_256_streams(b *testing.B) {
 	const xBitLen = 4096
 	const xByteLen = xBitLen / 8
-	const yBitLen = 256
+	const yBitLen = 4096
 	const yByteLen = yBitLen / 8
 	g := makeTestGroup4096()
 	env := &gpumathsEnv4096
@@ -222,8 +222,8 @@ func BenchmarkElGamalCUDA4096_256_streams(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	err = resetDevice()
-	if err != nil {
-		b.Fatal(err)
-	}
+	//err = resetDevice()
+	//if err != nil {
+	//	b.Fatal(err)
+	//}
 }

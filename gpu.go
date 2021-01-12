@@ -234,6 +234,7 @@ func destroyStreams(streams []Stream) error {
 //  There should be no scenario where the stream gets run for a different kernel than the upload
 // Could return byte slices of output as well? perhaps?
 func (gpumaths2048) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	//return errors.New("temporarily disabled due to driver API migration")
 	uploadError := C.enqueue2048(C.uint(numSlots), stream.s, whichToRun)
 	if uploadError != nil {
 		return goError(uploadError)
@@ -242,6 +243,7 @@ func (gpumaths2048) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots in
 	}
 }
 func (gpumaths3200) enqueue(stream Stream, whichToRun C.enum_kernel, numSlots int) error {
+	//return errors.New("temporarily disabled due to driver API migration")
 	uploadError := C.enqueue3200(C.uint(numSlots), stream.s, whichToRun)
 	if uploadError != nil {
 		return goError(uploadError)
@@ -503,11 +505,11 @@ func get(stream Stream) error {
 
 // Reset the CUDA device
 // Hopefully this will allow the CUDA profile to be gotten in the graphical profiler
-func resetDevice() error {
-	errString := C.resetDevice()
-	err := goError(errString)
-	return err
-}
+//func resetDevice() error {
+//	errString := C.resetDevice()
+//	err := goError(errString)
+//	return err
+//}
 
 // putBits() copies bits from one array to another and right-pads any remaining words with zeroes
 func putBits(dst large.Bits, src large.Bits, n int) {
@@ -515,4 +517,10 @@ func putBits(dst large.Bits, src large.Bits, n int) {
 	for i := len(src); i < len(dst) && i < n; i++ {
 		dst[i] = 0
 	}
+}
+
+func initCuda() error {
+	errString := C.initCuda()
+	err := goError(errString)
+	return err
 }

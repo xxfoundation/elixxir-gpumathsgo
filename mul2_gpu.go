@@ -59,7 +59,9 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	env := chooseEnv(g)
 	maxSlotsMul2 := uint32(env.maxSlots(len(stream.cpuData), kernelMul2))
 	if numSlots > maxSlotsMul2 {
-		jww.WARN.Printf("Running multiple kernels for Mul2Chunk. Performance may be degraded")
+		//panic((numSlots+maxSlotsMul2-1)/maxSlotsMul2)
+		//panic(maxSlotsMul2)
+		jww.WARN.Printf("Running %v kernels for Mul2Chunk. Performance may be degraded", (numSlots+maxSlotsMul2-1)/maxSlotsMul2)
 	}
 	for i := uint32(0); i < numSlots; i += maxSlotsMul2 {
 		sliceEnd := i
