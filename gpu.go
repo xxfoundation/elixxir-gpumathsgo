@@ -68,7 +68,6 @@ type (
 var gpumathsEnv2048 gpumaths2048
 var gpumathsEnv3200 gpumaths3200
 var gpumathsEnv4096 gpumaths4096
-var cudaDone sync.Once
 
 // All size data that a gpumath env could get is included in this type
 // Since these calls will always have the same result,
@@ -523,9 +522,7 @@ func putBits(dst large.Bits, src large.Bits, n int) {
 
 func initCuda() error {
 	var err error
-	cudaDone.Do(func() {
-		errString := C.initCuda()
-		err = goError(errString)
-	})
+	errString := C.initCuda()
+	err = goError(errString)
 	return err
 }
