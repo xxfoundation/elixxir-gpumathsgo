@@ -55,10 +55,10 @@ func TestPowm4096(t *testing.T) {
 		t.Fatal(err)
 	}
 	// flush system profiling data, just in case
-	err = resetDevice()
-	if err != nil {
-		t.Fatal(err)
-	}
+	//err = resetDevice()
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
 }
 
 func TestElgamal4096(t *testing.T) {
@@ -106,10 +106,10 @@ func TestElgamal4096(t *testing.T) {
 		t.Fatal(err)
 	}
 	// flush system profiling data, just in case
-	err = resetDevice()
-	if err != nil {
-		t.Fatal(err)
-	}
+	//err = resetDevice()
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
 }
 
 func TestPutBits(t *testing.T) {
