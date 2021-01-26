@@ -36,7 +36,6 @@ import (
 	"gitlab.com/xx_network/crypto/large"
 	"math/big"
 	"reflect"
-	"sync"
 	"unsafe"
 )
 
