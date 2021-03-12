@@ -15,41 +15,55 @@ package gpumaths
 */
 import "C"
 import (
-	"fmt"
+	jww "github.com/spf13/jwalterweatherman"
 	"gitlab.com/elixxir/crypto/cyclic"
-	"log"
+	"math/rand"
+	"time"
 )
 
-// mul2_gpu.go contains the CUDA ops for the Mul2 operation. Mul2(...)
+// mul2_gpu.go contains the CUDA ops for the mul2 operation. mul2(...)
 // performs the actual call into the library and Mul2Chunk implements
 // the streaming interface function called by the server implementation.
 
 const kernelMul2 = C.KERNEL_MUL2
 
-// Mul2Chunk performs the Mul2 operation on the cypher and precomputation
+// This interface provides compatibility with the underlying mul2 method
+// Int buffers and slices can both be used to implement this interface
+type intGetter interface {
+	Get(index uint32) *cyclic.Int
+	Len() int
+}
+
+type intSlice []*cyclic.Int
+
+// Implement intGetter with cyclic int slice
+func (s intSlice) Get(index uint32) *cyclic.Int {
+	return s[index]
+}
+
+func (s intSlice) Len() int {
+	return len(s)
+}
+
+// Mul2Chunk performs the mul2 operation on the cypher and precomputation
 // payloads
 // Precondition: All int buffers must have the same length
 var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 	x *cyclic.IntBuffer, y *cyclic.IntBuffer, results *cyclic.IntBuffer) error {
-	// Populate Mul2 inputs
-	numSlots := x.Len()
-	input := Mul2Input{
-		Slots: make([]Mul2InputSlot, numSlots),
-		Prime: g.GetPBytes(),
-	}
-	for i := uint32(0); i < uint32(numSlots); i++ {
-		input.Slots[i] = Mul2InputSlot{
-			X: x.Get(i).Bytes(),
-			Y: y.Get(i).Bytes(),
-		}
-	}
+	// Populate mul2 inputs
+	numSlots := uint32(x.Len())
 
 	// Run kernel on the inputs
 	stream := p.TakeStream()
 	defer p.ReturnStream(stream)
 	env := chooseEnv(g)
-	maxSlotsMul2 := env.maxSlots(stream.memSize, kernelMul2)
-	for i := 0; i < numSlots; i += maxSlotsMul2 {
+	maxSlotsMul2 := uint32(env.maxSlots(len(stream.cpuData), kernelMul2))
+	if numSlots > maxSlotsMul2 {
+		//panic((numSlots+maxSlotsMul2-1)/maxSlotsMul2)
+		//panic(maxSlotsMul2)
+		jww.WARN.Printf("Running %v kernels for Mul2Chunk. Performance may be degraded", (numSlots+maxSlotsMul2-1)/maxSlotsMul2)
+	}
+	for i := uint32(0); i < numSlots; i += maxSlotsMul2 {
 		sliceEnd := i
 		// Don't slice beyond the end of the input slice
 		if i+maxSlotsMul2 <= numSlots {
@@ -57,126 +71,126 @@ var Mul2Chunk Mul2ChunkPrototype = func(p *StreamPool, g *cyclic.Group,
 		} else {
 			sliceEnd = numSlots
 		}
-		thisInput := Mul2Input{
-			Slots: input.Slots[i:sliceEnd],
-			Prime: input.Prime,
-		}
-		result := <-Mul2(thisInput, env, stream)
-		if result.Err != nil {
-			return result.Err
-		}
-		// Populate with results
-		for j := range result.Slots {
-			g.SetBytes(results.Get(uint32(i+j)),
-				result.Slots[j].Result)
+		err := <-mul2(g, x.GetSubBuffer(i, sliceEnd), y.GetSubBuffer(i, sliceEnd), results.GetSubBuffer(i, sliceEnd), env, stream)
+		if err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
-// Bounds check to make sure that the stream can take all the inputs
-func validateMul2Input(input Mul2Input, env gpumathsEnv, stream Stream) {
-	maxSlotsMul2 := env.maxSlots(stream.memSize, kernelMul2)
-	if len(input.Slots) > maxSlotsMul2 {
-		// This can only happen because of user error (unlike Cuda
-		// problems), so panic to make the error apparent
-		log.Panicf(fmt.Sprintf("%v slots is more than this stream's "+
-			"max of %v for Mul2 kernel",
-			len(input.Slots), maxSlotsMul2))
+var Mul2Slice Mul2SlicePrototype = func(p *StreamPool, g *cyclic.Group, x *cyclic.IntBuffer, y, result []*cyclic.Int) error {
+	// Populate mul2 inputs
+	numSlots := uint32(x.Len())
+
+	// Run kernel on the inputs
+	stream := p.TakeStream()
+	defer p.ReturnStream(stream)
+	env := chooseEnv(g)
+	maxSlotsMul2 := uint32(env.maxSlots(len(stream.cpuData), kernelMul2))
+	for i := uint32(0); i < numSlots; i += maxSlotsMul2 {
+		sliceEnd := i
+		// Don't slice beyond the end of the input slice
+		if i+maxSlotsMul2 <= numSlots {
+			sliceEnd += maxSlotsMul2
+		} else {
+			sliceEnd = numSlots
+		}
+		err := <-mul2(g, x.GetSubBuffer(i, sliceEnd), intSlice(y[i:sliceEnd]), intSlice(result[i:sliceEnd]), env, stream)
+		if err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-// Mul2 runs the mul2 operation on precomputation and cypher payloads inside
+// mul2 runs the mul2 operation on precomputation and cypher payloads inside
 // the GPU
 // NOTE: publicCypherKey and prime should be byte slices obtained by running
 //       .Bytes() on the large int
 // The resulting byte slice should be trimmed and should be less than or
 // equal to the length of the template-instantiated BN on the GPU.
 // bnLength is a length in bits
-// TODO validate BN length in code (i.e. pick kernel variants based on bn
-// length)
-func Mul2(input Mul2Input, env gpumathsEnv, stream Stream) chan Mul2Result {
-	// Return the result later, when the GPU job finishes
-	resultChan := make(chan Mul2Result, 1)
+// puts output in results int buffer
+func mul2(g *cyclic.Group, x intGetter, y intGetter, results intGetter, env gpumathsEnv, stream Stream) chan error {
+	debugPrint := false
+	callId := rand.Intn(9999)
+	start := time.Now()
+	//if debugPrint {
+	//	println("starting mul2 call", callId, "with", len(input.Slots), "slots at", start.String())
+	//}
+	start = time.Now()
+	//Return the result later, when the GPU job finishes
+	resultChan := make(chan error, 1)
 	go func() {
-		validateMul2Input(input, env, stream)
-
 		// Arrange memory into stream buffers
-		numSlots := len(input.Slots)
+		numSlots := uint32(x.Len())
 
 		// TODO clean this up by implementing the
 		// arrangement/dearrangement with reader/writer interfaces
 		// or smth
-		constants := toSlice(C.getCpuConstants(stream.s),
-			env.getConstantsSize(kernelMul2))
+		constants := stream.getCpuConstantsWords(env, kernelMul2)
+		bnLengthWords := env.getWordLen()
+		putBits(constants, g.GetP().Bits(), bnLengthWords)
 		offset := 0
-		// Prime
-		bnLengthBytes := env.getByteLen()
-		putInt(constants[offset:offset+bnLengthBytes],
-			input.Prime, bnLengthBytes)
-		offset += bnLengthBytes
+		offset += bnLengthWords
 
-		inputs := toSlice(env.getCpuInputs(stream, kernelMul2),
-			env.getInputSize(kernelMul2)*numSlots)
+		inputs := stream.getCpuInputsWords(env, kernelMul2, int(numSlots))
 		offset = 0
-		for i := 0; i < numSlots; i++ {
+		for i := uint32(0); i < numSlots; i++ {
 			// Put the first operand for this slot
-			putInt(inputs[offset:offset+bnLengthBytes],
-				input.Slots[i].X, bnLengthBytes)
-			offset += bnLengthBytes
+			putBits(inputs[offset:offset+bnLengthWords], x.Get(i).Bits(), bnLengthWords)
+			offset += bnLengthWords
 			// Put the second operand for this slot
-			putInt(inputs[offset:offset+bnLengthBytes],
-				input.Slots[i].Y, bnLengthBytes)
-			offset += bnLengthBytes
+			putBits(inputs[offset:offset+bnLengthWords], y.Get(i).Bits(), bnLengthWords)
+			offset += bnLengthWords
+		}
+		if debugPrint {
+			println("Call", callId, "post input arrangement", time.Since(start))
+			start = time.Now()
 		}
 
 		// Upload, run, wait for download
-		err := env.put(stream, kernelMul2, numSlots)
-		if err != nil {
-			resultChan <- Mul2Result{Err: err}
-			return
+		err := env.enqueue(stream, kernelMul2, int(numSlots))
+		if debugPrint {
+			println("Call", callId, "post put", time.Since(start))
+			start = time.Now()
 		}
-		err = env.run(stream)
 		if err != nil {
-			resultChan <- Mul2Result{Err: err}
-			return
-		}
-		err = env.download(stream)
-		if err != nil {
-			resultChan <- Mul2Result{Err: err}
+			resultChan <- err
 			return
 		}
 
-		// Results will be stored in this buffer
-		resultBuf := make([]byte,
-			env.getOutputSize(kernelMul2)*numSlots)
-		results := toSlice(env.getCpuOutputs(stream), len(resultBuf))
+		outputs := stream.getCpuOutputsWords(env, kernelMul2, int(numSlots))
 
 		// Wait on things to finish with Cuda
 		err = get(stream)
+
+		if debugPrint {
+			println("Call", callId, "post get", time.Since(start))
+			start = time.Now()
+		}
 		if err != nil {
-			resultChan <- Mul2Result{Err: err}
+			resultChan <- err
 			return
 		}
 
 		// Everything is OK, so let's go ahead and import the results
-		result := Mul2Result{
-			Slots: make([]Mul2ResultSlot, numSlots),
-			Err:   nil,
-		}
 
 		offset = 0
-		for i := 0; i < numSlots; i++ {
+		for i := uint32(0); i < numSlots; i++ {
 			// Output the computed result into each slot
-			end := offset + bnLengthBytes
-			result.Slots[i].Result = resultBuf[offset:end]
-			putInt(result.Slots[i].Result,
-				results[offset:end], bnLengthBytes)
-			offset += bnLengthBytes
+			g.OverwriteBits(results.Get(i), outputs[offset:offset+bnLengthWords])
+			offset += bnLengthWords
 		}
 
-		resultChan <- result
+		if debugPrint {
+			println("Call", callId, "post output arrangement", time.Since(start))
+		}
+
+		resultChan <- nil
 	}()
 	return resultChan
 }
