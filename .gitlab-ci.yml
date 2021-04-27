@@ -11,6 +11,7 @@ variables:
   REPO_NAME: gpumathsgo
   DOCKER_IMAGE: elixxirlabs/cuda-go:latest
   MIN_CODE_COVERAGE: "20.0"
+  NATIVE_BRANCH_OVERRIDE: "hotfix/destroystream"
 
 before_script:
   ##
