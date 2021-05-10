@@ -53,7 +53,7 @@ build:
     # Setup, diagnostics
     - mkdir -p /opt/xxnetwork/lib/
     - mkdir -p /opt/xxnetwork/include/
-    - cat /usr/local/cuda/version.txt
+    #- cat /usr/local/cuda/version.txt
     - nvidia-smi
 
     # Check out appropriate native library version for testing
