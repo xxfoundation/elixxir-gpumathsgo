@@ -96,6 +96,7 @@ build:
 
     - mkdir -p release
     - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags '-w -s' ./...
+    - cp -ra /opt/xxnetwork/* release/
   artifacts:
     paths:
       - vendor/
