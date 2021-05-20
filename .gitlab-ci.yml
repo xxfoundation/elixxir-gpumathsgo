@@ -11,6 +11,7 @@ variables:
   REPO_NAME: gpumathsgo
   DOCKER_IMAGE: elixxirlabs/cuda-go:latest
   MIN_CODE_COVERAGE: "20.0"
+  NATIVE_BRANCH_OVERRIDE: "hotfix/destroystream"
 
 before_script:
   ##
@@ -95,6 +96,7 @@ build:
 
     - mkdir -p release
     - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags '-w -s' ./...
+    - cp -ra /opt/xxnetwork/* release/
   artifacts:
     paths:
       - vendor/
