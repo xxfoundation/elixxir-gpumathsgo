@@ -15,7 +15,7 @@ package gpumaths
 import "C"
 import (
 	jww "github.com/spf13/jwalterweatherman"
-	"gitlab.com/elixxir/crypto/cyclic"
+	"git.xx.network/elixxir/crypto/cyclic"
 	"math/rand"
 	"time"
 )

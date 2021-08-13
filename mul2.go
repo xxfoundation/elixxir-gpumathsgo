@@ -7,7 +7,7 @@
 
 package gpumaths
 
-import "gitlab.com/elixxir/crypto/cyclic"
+import "git.xx.network/elixxir/crypto/cyclic"
 
 // mul2.go contains the input, results, and other types for running the mul2
 // operation against the GPU. The actual GPU call is in mul2_gpu.go and is

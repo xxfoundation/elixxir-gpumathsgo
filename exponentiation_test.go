@@ -10,8 +10,8 @@
 package gpumaths
 
 import (
-	"gitlab.com/elixxir/crypto/cryptops"
-	"gitlab.com/xx_network/crypto/large"
+	"git.xx.network/elixxir/crypto/cryptops"
+	"git.xx.network/xx_network/crypto/large"
 	"testing"
 )
 

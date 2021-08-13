@@ -17,7 +17,7 @@ import "C"
 
 import (
 	jww "github.com/spf13/jwalterweatherman"
-	"gitlab.com/elixxir/crypto/cyclic"
+	"git.xx.network/elixxir/crypto/cyclic"
 )
 
 // elgamal_gpu.go contains the CUDA ops for the ElGamal operation. ElGamal(...)

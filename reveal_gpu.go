@@ -16,7 +16,7 @@ package gpumaths
 import "C"
 import (
 	jww "github.com/spf13/jwalterweatherman"
-	"gitlab.com/elixxir/crypto/cyclic"
+	"git.xx.network/elixxir/crypto/cyclic"
 )
 
 // reveal_gpu.go contains the CUDA ops for the reveal operation. reveal(...)

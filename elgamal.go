@@ -7,7 +7,7 @@
 
 package gpumaths
 
-import "gitlab.com/elixxir/crypto/cyclic"
+import "git.xx.network/elixxir/crypto/cyclic"
 
 // elgamal.go contains the input, results, and other types for running the
 // elgamal operation against the GPU. The actual GPU call is in elgamal_gpu.go

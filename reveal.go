@@ -7,7 +7,7 @@
 
 package gpumaths
 
-import "gitlab.com/elixxir/crypto/cyclic"
+import "git.xx.network/elixxir/crypto/cyclic"
 
 // reveal.go contains the input, results, and other types for running the reveal
 // operation against the GPU. The actual GPU call is in reveal_gpu.go and is

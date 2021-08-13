@@ -11,7 +11,7 @@ package gpumaths
 
 import (
 	"errors"
-	"gitlab.com/elixxir/crypto/cyclic"
+	"git.xx.network/elixxir/crypto/cyclic"
 )
 
 // ElGamalChunk is stubbed unless GPU is present.

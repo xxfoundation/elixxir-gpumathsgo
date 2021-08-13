@@ -6,7 +6,7 @@
 
 package gpumaths
 
-import "gitlab.com/elixxir/crypto/cyclic"
+import "git.xx.network/elixxir/crypto/cyclic"
 
 type Mul3ChunkPrototype func(p *StreamPool, g *cyclic.Group,
 	x, y, z, result *cyclic.IntBuffer) error

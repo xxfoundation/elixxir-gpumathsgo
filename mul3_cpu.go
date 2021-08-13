@@ -11,7 +11,7 @@ package gpumaths
 
 import (
 	"github.com/pkg/errors"
-	"gitlab.com/elixxir/crypto/cyclic"
+	"git.xx.network/elixxir/crypto/cyclic"
 )
 
 // Mul3Chunk is stubbed unless GPU is present.
