@@ -9,33 +9,30 @@ cache:
 variables:
   REPO_DIR: gitlab.com/elixxir
   REPO_NAME: gpumathsgo
-  DOCKER_IMAGE: elixxirlabs/cuda-go:latest
+  DOCKER_IMAGE: elixxirlabs/cuda-go:go1.16-cuda11.1
   MIN_CODE_COVERAGE: "20.0"
+  NATIVE_BRANCH_OVERRIDE: "hotfix/destroystream"
 
 before_script:
-  ##
-  ## Go Setup
-  ##
   - go version || echo "Go executable not found."
-  - echo $CI_COMMIT_REF
+  - echo $CI_BUILD_REF
   - echo $CI_PROJECT_DIR
   - echo $PWD
-  - echo $USER
   - eval $(ssh-agent -s)
   - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
   - mkdir -p ~/.ssh
   - chmod 700 ~/.ssh
-  - ssh-keyscan -t rsa gitlab.com > ~/.ssh/known_hosts
-  - git config --global url."git@gitlab.com:".insteadOf "https://gitlab.com/"
+  - ssh-keyscan -t rsa $GITLAB_SERVER > ~/.ssh/known_hosts
+  - git config --global url."git@$GITLAB_SERVER:".insteadOf "https://gitlab.com/"
+  - git config --global url."git@$GITLAB_SERVER:".insteadOf "https://git.xx.network/"
   - export PATH=$HOME/go/bin:$PATH
-  - export GOPRIVATE="*gitlab.com/elixxir/*,*gitlab.com/xx_network/*"
+
 
 stages:
   - build
   - tag
   - trigger_server
   - trigger_release_server
-
 
 
 build:
@@ -53,11 +50,11 @@ build:
     # Setup, diagnostics
     - mkdir -p /opt/xxnetwork/lib/
     - mkdir -p /opt/xxnetwork/include/
-    - cat /usr/local/cuda/version.txt
+    #- cat /usr/local/cuda/version.txt
     - nvidia-smi
 
     # Check out appropriate native library version for testing
-    - git clone -b release git@gitlab.com:elixxir/gpumathsnative.git
+    - git clone -b release git@$GITLAB_SERVER:elixxir/gpumathsnative.git
     - cd gpumathsnative
     - if [ "$NATIVE_BRANCH_OVERRIDE" != "" ]
     - then
@@ -95,6 +92,7 @@ build:
 
     - mkdir -p release
     - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags '-w -s' ./...
+    - cp -ra /opt/xxnetwork/* release/
   artifacts:
     paths:
       - vendor/
@@ -104,15 +102,17 @@ build:
 
 # TODO(?): have server pull in the latest from release/master automatically for this pipeline, if possible
 trigger_server:
+  image: $DOCKER_IMAGE
   stage: trigger_server
   script:
-    - "curl -X POST -F token=5be79349e632bcd07f452d04cc0583 -F ref=master https://gitlab.com/api/v4/projects/5014439/trigger/pipeline"
+    - "curl -X POST -F token=$GITLAB_ACCESS_TOKEN -F ref=master https://$GITLAB_SERVER/api/v4/projects/33/trigger/pipeline"
   only:
     - master
 
 trigger_release_server:
+  image: $DOCKER_IMAGE
   stage: trigger_release_server
   script:
-    - "curl -X POST -F token=5be79349e632bcd07f452d04cc0583 -F ref=release https://gitlab.com/api/v4/projects/5014439/trigger/pipeline"
+    - "curl -X POST -F token=$GITLAB_ACCESS_TOKEN -F ref=release https://$GITLAB_SERVER/api/v4/projects/33/trigger/pipeline"
   only:
     - release
