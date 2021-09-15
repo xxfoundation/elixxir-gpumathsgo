@@ -54,7 +54,7 @@ build:
     - nvidia-smi
 
     # Check out appropriate native library version for testing
-    - git clone -b release git@gitlab.com:elixxir/gpumathsnative.git
+    - git clone -b release git@$GITLAB_SERVER:elixxir/gpumathsnative.git
     - cd gpumathsnative
     - if [ "$NATIVE_BRANCH_OVERRIDE" != "" ]
     - then
