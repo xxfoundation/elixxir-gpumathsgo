@@ -31,8 +31,7 @@ before_script:
 stages:
   - build
   - tag
-  - trigger_server
-  - trigger_release_server
+  - trigger_integration
 
 
 build:
