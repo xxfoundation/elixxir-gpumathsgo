@@ -101,18 +101,11 @@ build:
       - release/
 
 # TODO(?): have server pull in the latest from release/master automatically for this pipeline, if possible
-trigger_server:
-  image: $DOCKER_IMAGE
-  stage: trigger_server
-  script:
-    - "curl -X POST -F token=$GITLAB_ACCESS_TOKEN -F ref=master https://$GITLAB_SERVER/api/v4/projects/33/trigger/pipeline"
-  only:
-    - master
-
-trigger_release_server:
-  image: $DOCKER_IMAGE
-  stage: trigger_release_server
-  script:
-    - "curl -X POST -F token=$GITLAB_ACCESS_TOKEN -F ref=release https://$GITLAB_SERVER/api/v4/projects/33/trigger/pipeline"
+trigger_integration:
+  stage: trigger_integration
+  trigger:
+    project: elixxir/integration
+    branch: $CI_COMMIT_REF_NAME
   only:
     - release
+    - master
