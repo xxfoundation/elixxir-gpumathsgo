@@ -9,7 +9,7 @@
 package gpumaths
 
 import (
-	"gitlab.com/elixxir/crypto/cryptops"
+	"gitlab.com/elixxir/gpumathsgo/cryptops"
 	"gitlab.com/elixxir/crypto/cyclic"
 	"sync"
 	"testing"
