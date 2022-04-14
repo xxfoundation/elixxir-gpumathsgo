@@ -21,9 +21,14 @@ const ShareKeyBytesLen = 256 / 8
 type GeneratePrototype func(g *cyclic.Group, phaseKey,
 	shareKey *cyclic.Int, rng csprng.Source) error
 
-// Generate implements the Generate Prototype. Notably the share key is
-// 256 bits, generated per guidelines here:
+// Generate implements the Generate Prototype. The share key is
+// generated per guidelines here:
 //   https://www.keylength.com/en/4/
+// Our prime group size is 4096 (> 3072), so these (ephemeral, valid
+// only for this round) 256 bit secret keys for this operation should
+// provide security at least as good as a 128 bit symmetric
+// algorithm. See RFC 3766 (pg 19) and/or ECRYPT CSA "Algorithms, Key
+// Size and Protocols Report (2018)" (pg 48) for more details.
 var Generate GeneratePrototype = func(g *cyclic.Group, phaseKey,
 	shareKey *cyclic.Int, rng csprng.Source) error {
 	p := g.GetPBytes()
