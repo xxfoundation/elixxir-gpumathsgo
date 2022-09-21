@@ -44,8 +44,9 @@ build:
     - go mod tidy
     - go build ./...
     # Setup, diagnostics
-    - mkdir -p /opt/xxnetwork/lib/
-    - mkdir -p /opt/xxnetwork/include/
+    - sudo mkdir -p /opt/xxnetwork/lib/
+    - sudo mkdir -p /opt/xxnetwork/include/
+    - sudo chown -R -v npuser /opt/xxnetwork
     #- cat /usr/local/cuda/version.txt
     - nvidia-smi
 
@@ -69,7 +70,8 @@ build:
     - cd ../../..
 
     # Run tests
-    - mkdir -p testdata
+    - sudo mkdir -p testdata
+    - sudo chown -R -v npuser testdata
     # Test coverage
     - go test -v -tags gpu -coverprofile=testdata/coverage.out -covermode atomic -coverpkg ./... -race ./...
     # Is it possible to correctly merge the coverage data between these two build tags?
@@ -86,7 +88,8 @@ build:
     - export CODE_CHECK=$(echo "$(cat testdata/coverage-percentage.txt) >= $MIN_CODE_COVERAGE" | bc -l)
     - (if [ "$CODE_CHECK" == "1" ]; then echo "Minimum coverage of $MIN_CODE_COVERAGE succeeded"; else echo "Minimum coverage of $MIN_CODE_COVERAGE failed"; exit 1; fi);
 
-    - mkdir -p release
+    - sudo mkdir -p release
+    - sudo chown -R -v npuser release
     - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags '-w -s' ./...
     - cp -ra /opt/xxnetwork/* release/
   artifacts:
